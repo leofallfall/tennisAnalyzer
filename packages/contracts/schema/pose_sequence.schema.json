@@ -1,0 +1,156 @@
+{
+  "$defs": {
+    "Keypoint": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "presence": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Estimator likelihood the joint is in frame",
+          "title": "Presence"
+        },
+        "visibility": {
+          "anyOf": [
+            {
+              "maximum": 1,
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Estimator likelihood the joint is visible",
+          "title": "Visibility"
+        },
+        "x": {
+          "description": "Normalised x (0=left edge, 1=right edge); may exceed [0,1]",
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "description": "Normalised y (0=top, 1=bottom); may exceed [0,1]",
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Estimator-specific relative depth. NOT a metric depth; do not use for biomechanical measurement.",
+          "title": "Z"
+        }
+      },
+      "required": [
+        "name",
+        "x",
+        "y"
+      ],
+      "title": "Keypoint",
+      "type": "object"
+    },
+    "PoseFrame": {
+      "additionalProperties": false,
+      "properties": {
+        "detected": {
+          "title": "Detected",
+          "type": "boolean"
+        },
+        "frame_index": {
+          "title": "Frame Index",
+          "type": "integer"
+        },
+        "keypoints": {
+          "items": {
+            "$ref": "#/$defs/Keypoint"
+          },
+          "title": "Keypoints",
+          "type": "array"
+        },
+        "timestamp_s": {
+          "title": "Timestamp S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "frame_index",
+        "timestamp_s",
+        "detected"
+      ],
+      "title": "PoseFrame",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "estimator": {
+      "title": "Estimator",
+      "type": "string"
+    },
+    "fps": {
+      "title": "Fps",
+      "type": "number"
+    },
+    "frame_stride": {
+      "title": "Frame Stride",
+      "type": "integer"
+    },
+    "frames": {
+      "items": {
+        "$ref": "#/$defs/PoseFrame"
+      },
+      "title": "Frames",
+      "type": "array"
+    },
+    "image_height": {
+      "title": "Image Height",
+      "type": "integer"
+    },
+    "image_width": {
+      "title": "Image Width",
+      "type": "integer"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    }
+  },
+  "required": [
+    "estimator",
+    "model",
+    "image_width",
+    "image_height",
+    "fps",
+    "frame_stride",
+    "frames"
+  ],
+  "title": "PoseSequence",
+  "type": "object"
+}

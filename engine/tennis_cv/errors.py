@@ -1,0 +1,60 @@
+"""Engine error hierarchy. Every error carries a stable machine-readable ``code``."""
+
+from __future__ import annotations
+
+
+class TennisCVError(Exception):
+    """Base class for all engine errors."""
+
+    code = "engine_error"
+
+    def __init__(self, message: str, *, details: dict[str, object] | None = None) -> None:
+        super().__init__(message)
+        self.message = message
+        self.details = details or {}
+
+
+class ToolNotAvailableError(TennisCVError):
+    """A required external tool (e.g. ffmpeg/ffprobe) is not installed."""
+
+    code = "tool_not_available"
+
+
+class ProbeError(TennisCVError):
+    """The file could not be read as a video container."""
+
+    code = "probe_failed"
+
+
+class VideoValidationError(TennisCVError):
+    """The video was readable but does not satisfy the input requirements."""
+
+    code = "video_invalid"
+
+
+class PreprocessError(TennisCVError):
+    """FFmpeg preprocessing failed."""
+
+    code = "preprocess_failed"
+
+
+class DecodeError(TennisCVError):
+    """Frames could not be decoded."""
+
+    code = "decode_failed"
+
+
+class ModelNotAvailableError(TennisCVError):
+    """A model file required by an estimator is missing."""
+
+    code = "model_not_available"
+
+
+class NotYetImplementedError(TennisCVError, NotImplementedError):
+    """Raised by interfaces whose implementation does not exist yet.
+
+    This is deliberate: the engine must never return fabricated results for
+    capabilities that have not been built and validated.
+    """
+
+    code = "not_implemented"

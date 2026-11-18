@@ -1,0 +1,147 @@
+{
+  "$defs": {
+    "Observability": {
+      "description": "Whether a quantity could actually be observed in the footage.\n\n``NOT_OBSERVABLE`` is a valid analysis outcome, not a failure.",
+      "enum": [
+        "observable",
+        "partially_observable",
+        "not_observable",
+        "not_evaluated"
+      ],
+      "title": "Observability",
+      "type": "string"
+    },
+    "TimeInterval": {
+      "additionalProperties": false,
+      "description": "Closed interval in seconds on the *source video* timeline.",
+      "properties": {
+        "end_s": {
+          "minimum": 0,
+          "title": "End S",
+          "type": "number"
+        },
+        "start_s": {
+          "minimum": 0,
+          "title": "Start S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "start_s",
+        "end_s"
+      ],
+      "title": "TimeInterval",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "body_part": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Joint/segment or 'racket'/'ball'",
+      "title": "Body Part"
+    },
+    "confidence": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Confidence"
+    },
+    "frame_index": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Frame Index"
+    },
+    "interval": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TimeInterval"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "method": {
+      "description": "How the value was computed (algorithm + version)",
+      "title": "Method",
+      "type": "string"
+    },
+    "metric_id": {
+      "description": "Key in METRIC_CATALOGUE",
+      "title": "Metric Id",
+      "type": "string"
+    },
+    "observability": {
+      "$ref": "#/$defs/Observability"
+    },
+    "stroke_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stroke Id"
+    },
+    "unit": {
+      "title": "Unit",
+      "type": "string"
+    },
+    "value": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "None when the metric could not be evaluated",
+      "title": "Value"
+    }
+  },
+  "required": [
+    "metric_id",
+    "value",
+    "unit",
+    "observability",
+    "method"
+  ],
+  "title": "Measurement",
+  "type": "object"
+}

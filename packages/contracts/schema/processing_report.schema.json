@@ -1,0 +1,547 @@
+{
+  "$defs": {
+    "Assessment": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "title": "Detail",
+          "type": "string"
+        },
+        "rating": {
+          "$ref": "#/$defs/Rating"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Value"
+        }
+      },
+      "required": [
+        "rating",
+        "detail"
+      ],
+      "title": "Assessment",
+      "type": "object"
+    },
+    "Observability": {
+      "description": "Whether a quantity could actually be observed in the footage.\n\n``NOT_OBSERVABLE`` is a valid analysis outcome, not a failure.",
+      "enum": [
+        "observable",
+        "partially_observable",
+        "not_observable",
+        "not_evaluated"
+      ],
+      "title": "Observability",
+      "type": "string"
+    },
+    "PoseSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "detection_rate": {
+          "title": "Detection Rate",
+          "type": "number"
+        },
+        "frames_analysed": {
+          "title": "Frames Analysed",
+          "type": "integer"
+        },
+        "frames_with_pose": {
+          "title": "Frames With Pose",
+          "type": "integer"
+        },
+        "mean_keypoint_visibility": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": "Mean Keypoint Visibility",
+          "type": "object"
+        },
+        "ms_per_frame": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ms Per Frame"
+        },
+        "processing_time_ms": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Processing Time Ms"
+        }
+      },
+      "required": [
+        "frames_analysed",
+        "frames_with_pose",
+        "detection_rate",
+        "mean_keypoint_visibility"
+      ],
+      "title": "PoseSummary",
+      "type": "object"
+    },
+    "PreprocessResult": {
+      "additionalProperties": false,
+      "properties": {
+        "applied_rotation_deg": {
+          "title": "Applied Rotation Deg",
+          "type": "integer"
+        },
+        "duration_ms": {
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "metadata": {
+          "$ref": "#/$defs/VideoMetadata"
+        },
+        "output_path": {
+          "title": "Output Path",
+          "type": "string"
+        },
+        "resampled_to_cfr": {
+          "title": "Resampled To Cfr",
+          "type": "boolean"
+        },
+        "scaled": {
+          "title": "Scaled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "output_path",
+        "metadata",
+        "applied_rotation_deg",
+        "resampled_to_cfr",
+        "scaled",
+        "duration_ms"
+      ],
+      "title": "PreprocessResult",
+      "type": "object"
+    },
+    "QualityReport": {
+      "additionalProperties": false,
+      "properties": {
+        "blur": {
+          "$ref": "#/$defs/Assessment"
+        },
+        "blurry_frame_fraction": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Blurry Frame Fraction"
+        },
+        "frame_rate": {
+          "$ref": "#/$defs/Assessment"
+        },
+        "frames_sampled": {
+          "title": "Frames Sampled",
+          "type": "integer"
+        },
+        "lighting": {
+          "$ref": "#/$defs/Assessment"
+        },
+        "method": {
+          "default": "Heuristic image statistics (variance of Laplacian, luma mean/std/clipping) on sampled frames; pose detection rate for visibility. Thresholds uncalibrated.",
+          "title": "Method",
+          "type": "string"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        },
+        "observability": {
+          "$ref": "#/$defs/Observability",
+          "description": "Preliminary: can a player's body be analysed at all in this video?"
+        },
+        "poorly_lit_frame_fraction": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Poorly Lit Frame Fraction"
+        },
+        "resolution": {
+          "$ref": "#/$defs/Assessment"
+        },
+        "visibility": {
+          "$ref": "#/$defs/Assessment"
+        }
+      },
+      "required": [
+        "resolution",
+        "frame_rate",
+        "blur",
+        "lighting",
+        "visibility",
+        "frames_sampled",
+        "observability"
+      ],
+      "title": "QualityReport",
+      "type": "object"
+    },
+    "Rating": {
+      "enum": [
+        "good",
+        "acceptable",
+        "poor",
+        "unknown"
+      ],
+      "title": "Rating",
+      "type": "string"
+    },
+    "Severity": {
+      "enum": [
+        "error",
+        "warning"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "StepTiming": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_ms": {
+          "title": "Duration Ms",
+          "type": "number"
+        },
+        "step": {
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "duration_ms"
+      ],
+      "title": "StepTiming",
+      "type": "object"
+    },
+    "ValidationIssue": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        }
+      },
+      "required": [
+        "code",
+        "severity",
+        "message"
+      ],
+      "title": "ValidationIssue",
+      "type": "object"
+    },
+    "ValidationResult": {
+      "additionalProperties": false,
+      "properties": {
+        "is_valid": {
+          "title": "Is Valid",
+          "type": "boolean"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/$defs/ValidationIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        }
+      },
+      "required": [
+        "is_valid"
+      ],
+      "title": "ValidationResult",
+      "type": "object"
+    },
+    "VideoMetadata": {
+      "additionalProperties": false,
+      "description": "Technical description of a video file, as read by ffprobe.",
+      "properties": {
+        "average_fps": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ffprobe avg_frame_rate",
+          "title": "Average Fps"
+        },
+        "bit_rate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bit Rate"
+        },
+        "codec": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Codec"
+        },
+        "coded_height": {
+          "title": "Coded Height",
+          "type": "integer"
+        },
+        "coded_width": {
+          "title": "Coded Width",
+          "type": "integer"
+        },
+        "container": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Container"
+        },
+        "display_height": {
+          "title": "Display Height",
+          "type": "integer"
+        },
+        "display_width": {
+          "title": "Display Width",
+          "type": "integer"
+        },
+        "duration_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "None if not determinable",
+          "title": "Duration S"
+        },
+        "file_size_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Size Bytes"
+        },
+        "frame_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frame Count"
+        },
+        "has_audio": {
+          "default": false,
+          "title": "Has Audio",
+          "type": "boolean"
+        },
+        "is_variable_frame_rate": {
+          "default": false,
+          "title": "Is Variable Frame Rate",
+          "type": "boolean"
+        },
+        "nominal_fps": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ffprobe r_frame_rate",
+          "title": "Nominal Fps"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "pixel_format": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pixel Format"
+        },
+        "rotation_deg": {
+          "default": 0,
+          "description": "Clockwise rotation required for display",
+          "title": "Rotation Deg",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "coded_width",
+        "coded_height",
+        "display_width",
+        "display_height"
+      ],
+      "title": "VideoMetadata",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifacts": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Artifacts",
+      "type": "object"
+    },
+    "engine_version": {
+      "default": "0.1.0",
+      "title": "Engine Version",
+      "type": "string"
+    },
+    "not_performed": {
+      "description": "Analyses deliberately not performed because they are not implemented",
+      "items": {
+        "type": "string"
+      },
+      "title": "Not Performed",
+      "type": "array"
+    },
+    "pose_estimator": {
+      "title": "Pose Estimator",
+      "type": "string"
+    },
+    "pose_model": {
+      "title": "Pose Model",
+      "type": "string"
+    },
+    "pose_summary": {
+      "$ref": "#/$defs/PoseSummary"
+    },
+    "preprocess": {
+      "$ref": "#/$defs/PreprocessResult"
+    },
+    "quality": {
+      "$ref": "#/$defs/QualityReport"
+    },
+    "source_metadata": {
+      "$ref": "#/$defs/VideoMetadata"
+    },
+    "timings": {
+      "items": {
+        "$ref": "#/$defs/StepTiming"
+      },
+      "title": "Timings",
+      "type": "array"
+    },
+    "total_duration_ms": {
+      "title": "Total Duration Ms",
+      "type": "number"
+    },
+    "validation": {
+      "$ref": "#/$defs/ValidationResult"
+    }
+  },
+  "required": [
+    "source_metadata",
+    "validation",
+    "preprocess",
+    "quality",
+    "pose_estimator",
+    "pose_model",
+    "pose_summary",
+    "artifacts",
+    "timings",
+    "total_duration_ms"
+  ],
+  "title": "ProcessingReport",
+  "type": "object"
+}

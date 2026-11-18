@@ -1,0 +1,97 @@
+# Architecture
+
+## System overview
+
+```
+┌────────────────────┐   HTTP/JSON    ┌──────────────────────┐
+│  apps/web          │ ─────────────▶ │  apps/api (FastAPI)  │
+│  React + Vite + TS │ ◀───────────── │  tennis_api          │
+└────────────────────┘  video files   └──────────┬───────────┘
+                                                  │ SQLAlchemy
+                                       ┌──────────▼───────────┐
+                                       │ SQLite (WAL)         │  videos, analyses,
+                                       │ storage/tpa.sqlite3  │  analysis_videos,
+                                       └──────────▲───────────┘  processing_jobs
+                                                  │ poll + atomic claim
+                                       ┌──────────┴───────────┐
+                                       │ worker (tennis_worker)│
+                                       │ separate OS process  │
+                                       └──────────┬───────────┘
+                                                  │ Python calls
+                                       ┌──────────▼───────────┐
+                                       │ engine (tennis_cv)   │  FFmpeg, OpenCV,
+                                       │ pure library         │  MediaPipe
+                                       └──────────────────────┘
+        storage/  videos/<id>/original.*     analyses/<id>/videos/<vid>/{proxy.mp4,
+                                                pose.json, overlay.mp4, report.json}
+```
+
+## Modules and responsibilities
+
+| Module | Path | Responsibility | Must not |
+| --- | --- | --- | --- |
+| Web | `apps/web` | UI, playback, frame stepping, client-side skeleton rendering | Compute measurements |
+| API | `apps/api/tennis_api` | Upload, validation, persistence, job lifecycle, serving artifacts | Run long CV work in a request |
+| Worker | `worker/tennis_worker` | Claim queued jobs, run engine pipelines, persist results/status | Expose HTTP |
+| Engine | `engine/tennis_cv` | Video, quality, pose, (future) strokes, racket, ball, biomechanics, comparison | Know about HTTP, DB or LLMs |
+| Contracts | `packages/contracts` | JSON Schemas (generated) + TS types mirroring Pydantic | Contain logic |
+| AI layer | *(future)* `ai/` or `apps/api/.../coach` | Interpret structured measurements | Produce or alter measurements |
+
+### Engine sub-modules
+
+| Package | Status | Notes |
+| --- | --- | --- |
+| `video` | implemented | ffprobe metadata (rotation, VFR), validation, CFR proxy, frame iterator |
+| `quality` | experimental | Laplacian sharpness, luma stats, pose detection rate → observability |
+| `pose` | experimental | `PoseEstimator` ABC, MediaPipe Pose Landmarker (VIDEO mode), overlay |
+| `biomechanics` | experimental | Metric catalogue, `Measurement`, evidence layers, 2D projected angles |
+| `detection` | interface | Scene/camera change, player detection |
+| `strokes` | interface | Detection, classification, phase segmentation |
+| `racket`, `ball` | interface | Detection/tracking |
+| `comparison` | interface | `CameraView`, compatibility, normalisation |
+| `pipeline.py` | implemented | Milestone 1 pipeline orchestrating the above |
+| `capabilities.py` | implemented | Honest module status, exposed at `/api/system/info` |
+
+## Data flow (Milestone 1)
+
+1. `POST /api/videos/upload` streams the file to `storage/videos/<id>/original.<ext>`,
+   hashes it, runs `probe_video` + `validate_metadata`. Invalid → deleted + 422.
+2. `POST /api/analyses` links one or more videos (with camera view and explicit
+   `video_relation`).
+3. `POST /api/analyses/{id}/start` sets status `queued` and inserts a `processing_jobs`
+   row; returns 202 immediately.
+4. Worker claims the job (`UPDATE ... WHERE status='queued'`, rowcount check), runs
+   `run_video_processing` per video, updating `stage`/`progress` (throttled to 2 Hz).
+5. Results JSON (one `ProcessingReport` per video) is stored on the analysis; artifacts
+   on disk. Failures store `error_code`, `error_message`, `error_details`.
+6. Web polls `/status` every 1.5 s while busy, then loads the analysis, pose JSON and
+   proxy, and renders the skeleton client-side synced with `requestVideoFrameCallback`.
+
+## Time base
+
+The proxy is constant frame rate, so frame *i* has timestamp `i / fps`. All engine
+timestamps refer to the proxy timeline (starting at the first decoded frame). VFR
+sources are resampled to their average rate; the trade-off is documented in
+[VIDEO_PIPELINE.md](VIDEO_PIPELINE.md).
+
+## Local-first design
+
+- Single machine, no external services, no accounts. SQLite + filesystem.
+- Background work in a separate process with a DB-backed queue (no Redis/Celery).
+- All paths stored relative to `TPA_STORAGE_DIR`.
+- Model files downloaded once into `models/`.
+
+## Cloud migration strategy
+
+| Concern | Local now | Cloud later | Change required |
+| --- | --- | --- | --- |
+| Database | SQLite | PostgreSQL | `TPA_DATABASE_URL` + driver; add Alembic migrations |
+| Files | local `storage/` | S3-compatible object store | Storage interface behind `storage.py` (relative keys already) |
+| Queue | `processing_jobs` table | Same table with `SELECT ... FOR UPDATE SKIP LOCKED`, or a managed queue | Claim query only |
+| Workers | 1 local process | N containers, GPU optional | Heartbeats + stale-job recovery by timeout |
+| Auth | none (single user) | OIDC | `User` entity already in the data model |
+| Uploads | through API | pre-signed direct upload | New endpoint, same validation step in worker |
+
+## Non-goals now
+
+Microservices, message brokers, Kubernetes, GPU scheduling, real-time streaming.

@@ -1,0 +1,64 @@
+{
+  "$defs": {
+    "IssueNature": {
+      "enum": [
+        "technical_error",
+        "stylistic_variation",
+        "uncertain"
+      ],
+      "title": "IssueNature",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "alternative_explanations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Alternative Explanations",
+      "type": "array"
+    },
+    "based_on_observation_ids": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Based On Observation Ids",
+      "type": "array"
+    },
+    "confidence": {
+      "anyOf": [
+        {
+          "maximum": 1,
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Confidence"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "nature": {
+      "$ref": "#/$defs/IssueNature"
+    },
+    "statement": {
+      "title": "Statement",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "statement",
+    "based_on_observation_ids",
+    "nature"
+  ],
+  "title": "Interpretation",
+  "type": "object"
+}

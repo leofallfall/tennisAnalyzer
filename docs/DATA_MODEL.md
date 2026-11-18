@@ -1,0 +1,109 @@
+# Data Model
+
+Legend: **[M1]** implemented as a database table now; others are designed and will be
+added with the milestone that needs them (via Alembic migrations once PostgreSQL-ready
+migrations are introduced).
+
+## Entity relationship overview
+
+```
+User 1─1 PlayerProfile
+User 1─* Video
+User 1─* Analysis ─*─* Video          (via AnalysisVideo: position, camera_view)   [M1]
+Analysis 1─* ProcessingJob                                                         [M1]
+Analysis(session) 1─1 Session 1─* Stroke
+Stroke 1─* StrokeView *─1 Video       (same stroke, several camera angles)
+StrokeView 1─1 CameraView
+Stroke 1─* StrokePhase
+Video 1─* PoseFrame                   (per analysed frame of a video)
+Stroke 1─* BiomechanicalMetric        (Measurement records)
+TechnicalIssue *─* Stroke             (via Evidence)
+Evidence *─1 Stroke, *─1 Video, frame range, metric refs
+ImprovementPath *─* TechnicalIssue
+CoachNote *─1 User, optional → Stroke / Analysis / ImprovementPath
+ProfessionalReference 1─* Video (licensed), 1─* Stroke
+```
+
+## Entities
+
+### User
+`id, email, display_name, created_at`. Single implicit local user in M1.
+
+### PlayerProfile
+`user_id, dominant_hand (right|left), backhand (one_handed|two_handed), level,
+years_playing, height_cm?, goals, updated_at`. Dominant hand is required to classify
+forehand vs backhand. *(M1: stored in browser localStorage only.)*
+
+### Video **[M1]**
+`id, original_filename, stored_path (relative), content_type, size_bytes, sha256,
+video_metadata (JSON VideoMetadata), validation (JSON), created_at`.
+Future: `user_id, recorded_at, source (user|professional_reference), licence`.
+
+### Analysis **[M1]**
+`id, mode (session|single_stroke), title, video_relation (single|
+same_stroke_multi_angle|different_strokes), stroke_filter, focus, status (created|queued|
+running|completed|failed), stage, progress, error_code, error_message, error_details,
+results (JSON), created_at, updated_at, started_at, finished_at`.
+
+### AnalysisVideo **[M1]**
+`analysis_id, video_id, position, camera_view`. Associates several videos with one
+analysis. Their meaning is given by `Analysis.video_relation`, which the user must
+declare explicitly whenever more than one video is attached.
+
+### ProcessingJob **[M1]**
+`id, analysis_id, kind, status, attempts, worker_id, created_at, started_at,
+finished_at, error`. Durable work queue consumed by the worker.
+
+### Session
+`id, analysis_id, video_id, scene_segments (JSON), stroke_count_candidates,
+stroke_count_observable, summary (JSON)`.
+
+### Stroke
+`id, session_id?, analysis_id, stroke_type (forehand|backhand|serve|unknown),
+type_confidence, interval (start_s,end_s on the primary video), estimated_contact_s,
+movement_condition (stationary|moving), quality (JSON), observability, excluded_reason?`.
+
+### StrokeView *(multi-angle)*
+`stroke_id, video_id, interval_in_video, time_offset_s, camera_view_id`.
+**One stroke, many videos**: each angle is a StrokeView pointing at the same Stroke, with
+the time offset used to synchronise views. Different strokes are different Stroke rows —
+the two cases can never be confused.
+
+### CameraView
+`id, view_angle (side_forehand|side_backhand|front|behind|diagonal|unknown),
+camera_height, approx_distance_m, is_static, declared_by_user`.
+
+### StrokePhase
+`stroke_id, name (preparation|backswing|forward_swing|contact|follow_through),
+start_s, end_s, boundary_method, user_adjusted, confidence, observability`.
+
+### PoseFrame
+`video_id, analysis_id, frame_index, timestamp_s, detected, estimator, model,
+keypoints (JSON: name,x,y,z,visibility,presence)`. *(M1: stored as `pose.json` artifact;
+moved to a table or columnar file when queried per stroke.)*
+
+### BiomechanicalMetric (Measurement)
+`id, stroke_id, metric_id, value?, unit, start_s?, end_s?, frame_index?, body_part,
+confidence?, observability, method, limitations (JSON)`. Value is null iff not observable.
+
+### TechnicalIssue
+`id, analysis_id, issue_type, stroke_type, title, description, category (recurring|
+isolated|potentially_significant|positive_reference), nature (technical_error|
+stylistic_variation|uncertain), occurrences, evaluable_count, frequency, confidence,
+significance, limitations, created_by (engine|ai|user)`. `evaluable_count` is the number
+of strokes where the underlying metric is observable — the only valid denominator.
+
+### Evidence
+`id, issue_id, stroke_id, video_id, start_s, end_s, keyframe_indices, metric_ids, note`.
+
+### ImprovementPath
+`id, user_id, title, status (open|closed), created_at, closed_at, issue_ids, drills (JSON),
+evidence_analysis_ids`. No due dates by design.
+
+### CoachNote
+`id, user_id, author (user|external_coach), text, created_at, links (stroke/analysis/path)`.
+Treated as hypotheses by the AI Coach.
+
+### ProfessionalReference
+`id, player_name, stroke_type, video_id, licence, source_url, usage_restrictions,
+camera_view_id, notes`. Only content with a known licence is ingested.

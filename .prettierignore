@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+storage
+models
+.venv
+pnpm-lock.yaml
+packages/contracts/schema
+docs
+*.md

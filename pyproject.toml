@@ -1,0 +1,59 @@
+# uv workspace root. Python packages live in engine/, apps/api/ and worker/.
+# Tests for all Python packages live in tests/ (see docs/TESTING_STRATEGY.md).
+[project]
+name = "tennis-performance-analyzer"
+version = "0.1.0"
+description = "Workspace root for the Tennis Performance Analyzer Python packages"
+requires-python = ">=3.11,<3.14"
+dependencies = ["tennis-cv", "tennis-api", "tennis-worker"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.2",
+  "httpx>=0.27",
+  "ruff>=0.6",
+  "mypy>=1.11",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["engine", "apps/api", "worker"]
+
+[tool.uv.sources]
+tennis-cv = { workspace = true }
+tennis-api = { workspace = true }
+tennis-worker = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]
+markers = [
+  "requires_model: needs the MediaPipe pose model file (run scripts/download_models.py)",
+  "slow: runs real video processing",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["apps/web", "packages", "storage"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF"]
+ignore = ["RUF012", "RUF046"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tennis_cv", "tennis_api", "tennis_worker", "tests"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+plugins = ["pydantic.mypy"]
+files = ["engine/tennis_cv", "apps/api/tennis_api", "worker/tennis_worker"]
+
+[[tool.mypy.overrides]]
+module = ["cv2", "cv2.*", "mediapipe", "mediapipe.*"]
+ignore_missing_imports = true

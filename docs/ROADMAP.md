@@ -7,6 +7,10 @@ first pose experiment, tests. **M1 is in progress**: all functional pieces exist
 work on synthetic and real (non-tennis) footage; validation on real amateur tennis
 footage has **not** been done yet.
 
+**Personal AI analysis (Claude Code, no API): plumbing done** (2026-11-18, ADR-013,
+`docs/AI_ANALYSIS.md`). Evidence Packs, the `/analizza-sessione` skill, validated import and
+the UI flow work end to end. They only produce technical feedback once M2 provides strokes.
+
 ## Milestones
 
 ### M0 — Foundation ✅

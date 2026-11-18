@@ -258,3 +258,174 @@ export interface SystemInfo {
   pose_model: ToolStatus
   capabilities: Capability[]
 }
+
+// ---- Personal AI analysis (apps/api/tennis_api/ai) -------------------------------
+// Mirrors tennis_api.ai.result.AnalysisResult and tennis_api.schemas.AiAnalysisOut.
+
+export type AiAnalysisKind = 'session' | 'single_stroke'
+export type AiAnalysisState = 'awaiting_result' | 'imported' | 'invalid'
+export type IssueStrokeType = 'forehand' | 'backhand' | 'both' | 'unknown'
+export type IssueNature = 'technical_error' | 'stylistic_variation' | 'uncertain'
+export type Relevance = 'high' | 'medium' | 'low'
+export type EvidenceKind =
+  'image' | 'measurement' | 'stroke' | 'aggregate' | 'data_quality' | 'timeseries'
+
+export interface EvidenceRef {
+  kind: EvidenceKind
+  ref: string
+  note?: string | null
+}
+
+export interface Exercise {
+  name: string
+  description: string
+  cue?: string | null
+  dosage?: string | null
+  how_to_verify?: string | null
+}
+
+export interface AiIssue {
+  id: string
+  priority: number
+  name: string
+  description: string
+  stroke_type: IssueStrokeType
+  nature: IssueNature
+  occurrences: number
+  evaluable_strokes: number
+  percentage: number
+  relevance: Relevance
+  confidence: number
+  stroke_ids: string[]
+  timestamps_s: number[]
+  observations: string[]
+  evidence: EvidenceRef[]
+  biomechanical_explanation: string
+  alternative_explanations: string[]
+  recommended_exercises: Exercise[]
+}
+
+export interface AiPositiveExecution {
+  stroke_id: string
+  stroke_type: IssueStrokeType
+  timestamp_s: number | null
+  description: string
+  evidence: EvidenceRef[]
+}
+
+export interface AiRecommendation {
+  priority: number
+  title: string
+  rationale: string
+  addresses_issue_ids: string[]
+  exercises: Exercise[]
+}
+
+export interface AiPhaseAnalysis {
+  phase: string
+  observed: string[]
+  hypotheses: string[]
+  not_observable: string[]
+  evidence: EvidenceRef[]
+}
+
+export interface AiAnalysisResult {
+  schema_version: '1.0'
+  kind: AiAnalysisKind
+  session_id: string
+  pack_id: string
+  analysis_version: string
+  adapter: string
+  model: string
+  generated_at: string
+  language: string
+  summary: string
+  evaluated_strokes: {
+    detected: number
+    evaluable: number
+    forehand: number
+    backhand: number
+    unknown: number
+  }
+  by_stroke_type: {
+    stroke_type: 'forehand' | 'backhand'
+    detected: number
+    evaluable: number
+    summary: string
+    issue_ids: string[]
+  }[]
+  issues: AiIssue[]
+  positive_executions: AiPositiveExecution[]
+  recommendations: AiRecommendation[]
+  limitations: string[]
+  confidence: number
+  insufficient_evidence: boolean
+  target: { video_id: string; stroke_id: string; interval: TimeInterval } | null
+  phases: AiPhaseAnalysis[]
+}
+
+export interface AiHandoff {
+  adapter: string
+  interactive: boolean
+  pack_path: string
+  command: string
+  result_path: string
+  steps: string[]
+}
+
+export interface AiValidationProblem {
+  code: string
+  message: string
+  location: string | null
+}
+
+export interface AiEvidenceImage {
+  id: string
+  path: string
+  video_id: string
+  frame_index: number
+  timestamp_s: number
+  stroke_id: string | null
+  role: 'overview' | 'preparation' | 'contact' | 'follow_through' | 'sequence'
+  skeleton_drawn: boolean
+  width: number
+  height: number
+  url: string
+}
+
+export interface AiAnalysis {
+  id: string
+  analysis_id: string
+  kind: AiAnalysisKind
+  pack_id: string
+  pack_path: string
+  adapter: string
+  status: AiAnalysisState
+  target: {
+    video_id: string
+    stroke_id: string
+    source: 'detected' | 'user_interval'
+    interval: TimeInterval
+    motivating_issue: { issue_id: string; name: string } | null
+  } | null
+  data_status: Record<string, 'available' | 'not_implemented' | 'empty'>
+  result: AiAnalysisResult | null
+  model: string | null
+  validation_errors: AiValidationProblem[]
+  validation_warnings: AiValidationProblem[]
+  import_attempts: number
+  created_at: string
+  imported_at: string | null
+  handoff: AiHandoff | null
+  images: AiEvidenceImage[]
+}
+
+export interface SingleStrokeAiRequest {
+  stroke_id?: string
+  video_id?: string
+  start_s?: number
+  end_s?: number
+  declared_stroke_type?: 'forehand' | 'backhand' | 'unknown'
+  source_ai_analysis_id?: string
+  issue_id?: string
+}

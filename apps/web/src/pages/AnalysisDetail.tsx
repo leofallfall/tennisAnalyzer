@@ -3,6 +3,7 @@ import { ArrowLeft, ExternalLink } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
+import { AiAnalysisPanel } from '@/components/analysis/AiAnalysisPanel'
 import {
   JointTable,
   PoseSummaryCard,
@@ -208,6 +209,13 @@ function AnalysisBody({
           <JointTable pose={frameInfo.pose} frame={frameInfo.frame} />
         </div>
       )}
+
+      <AiAnalysisPanel
+        analysis={analysis}
+        currentTime={frameInfo.frame / fps}
+        duration={duration}
+        videoId={av.video_id}
+      />
 
       {analysis.mode === 'session' ? <SessionPlaceholders /> : <SingleStrokePlaceholders />}
     </div>

@@ -16,6 +16,8 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from tennis_api.ai.pack import Manifest
+from tennis_api.ai.result import AnalysisResult
 from tennis_cv.biomechanics import Interpretation, Measurement, Observation, Recommendation
 from tennis_cv.pipeline import ProcessingReport
 from tennis_cv.pose.models import PoseSequence
@@ -28,6 +30,8 @@ CONTRACTS: dict[str, type[BaseModel]] = {
     "observation": Observation,
     "interpretation": Interpretation,
     "recommendation": Recommendation,
+    "ai_analysis_result": AnalysisResult,
+    "ai_evidence_manifest": Manifest,
 }
 
 

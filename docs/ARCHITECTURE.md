@@ -35,7 +35,7 @@
 | Worker | `worker/tennis_worker` | Claim queued jobs, run engine pipelines, persist results/status | Expose HTTP |
 | Engine | `engine/tennis_cv` | Video, quality, pose, (future) strokes, racket, ball, biomechanics, comparison | Know about HTTP, DB or LLMs |
 | Contracts | `packages/contracts` | JSON Schemas (generated) + TS types mirroring Pydantic | Contain logic |
-| AI layer | *(future)* `ai/` or `apps/api/.../coach` | Interpret structured measurements | Produce or alter measurements |
+| AI layer | `apps/api/tennis_api/ai` (experimental, see `AI_ANALYSIS.md`) | Build Evidence Packs, validate and import AI interpretations (`AIClient`: Claude Code now, Anthropic API later) | Call an LLM from the app in personal mode, produce or alter measurements |
 
 ### Engine sub-modules
 

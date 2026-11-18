@@ -129,3 +129,35 @@ class ProcessingJob(Base):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
+
+
+class AiAnalysisStatus(StrEnum):
+    AWAITING_RESULT = "awaiting_result"
+    IMPORTED = "imported"
+    INVALID = "invalid"
+
+
+class AiAnalysis(Base):
+    """An AI interpretation request: one Evidence Pack and, once imported, its result.
+
+    Kept apart from ``Analysis.results`` so the CV results stay immutable.
+    """
+
+    __tablename__ = "ai_analyses"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    analysis_id: Mapped[str] = mapped_column(ForeignKey("analyses.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(32), doc="session | single_stroke")
+    pack_id: Mapped[str] = mapped_column(String(64), unique=True)
+    pack_dir: Mapped[str] = mapped_column(String(1024), doc="Relative to storage_dir")
+    adapter: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(24), default=AiAnalysisStatus.AWAITING_RESULT.value)
+    target: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    data_status: Mapped[dict[str, Any]] = mapped_column(JSON)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    model: Mapped[str | None] = mapped_column(String(128))
+    validation_errors: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    validation_warnings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    import_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

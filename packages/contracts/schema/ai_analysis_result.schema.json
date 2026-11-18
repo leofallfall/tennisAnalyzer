@@ -1,0 +1,702 @@
+{
+  "$defs": {
+    "EvaluatedStrokes": {
+      "additionalProperties": false,
+      "properties": {
+        "backhand": {
+          "minimum": 0,
+          "title": "Backhand",
+          "type": "integer"
+        },
+        "detected": {
+          "description": "Strokes present in the Evidence Pack",
+          "minimum": 0,
+          "title": "Detected",
+          "type": "integer"
+        },
+        "evaluable": {
+          "description": "Strokes with enough observable data to judge",
+          "minimum": 0,
+          "title": "Evaluable",
+          "type": "integer"
+        },
+        "forehand": {
+          "minimum": 0,
+          "title": "Forehand",
+          "type": "integer"
+        },
+        "unknown": {
+          "minimum": 0,
+          "title": "Unknown",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "detected",
+        "evaluable",
+        "forehand",
+        "backhand",
+        "unknown"
+      ],
+      "title": "EvaluatedStrokes",
+      "type": "object"
+    },
+    "EvidenceKind": {
+      "enum": [
+        "image",
+        "measurement",
+        "stroke",
+        "aggregate",
+        "data_quality",
+        "timeseries"
+      ],
+      "title": "EvidenceKind",
+      "type": "string"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "ref": {
+          "description": "Image id, measurement id, stroke id, metric id (aggregate) or file section the claim rests on. Must exist in the Evidence Pack.",
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "ref"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "Exercise": {
+      "additionalProperties": false,
+      "properties": {
+        "cue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "One short focus cue",
+          "title": "Cue"
+        },
+        "description": {
+          "description": "Setup and execution",
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "dosage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Sets / repetitions / duration",
+          "title": "Dosage"
+        },
+        "how_to_verify": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What to film next time and which metric should change",
+          "title": "How To Verify"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "description"
+      ],
+      "title": "Exercise",
+      "type": "object"
+    },
+    "Issue": {
+      "additionalProperties": false,
+      "properties": {
+        "alternative_explanations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Alternative Explanations",
+          "type": "array"
+        },
+        "biomechanical_explanation": {
+          "description": "Interpretation. Clearly a hypothesis when not certain.",
+          "minLength": 1,
+          "title": "Biomechanical Explanation",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "description": {
+          "description": "Technical description of the problem",
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "evaluable_strokes": {
+          "description": "Denominator: strokes where the underlying metric is observable",
+          "minimum": 0,
+          "title": "Evaluable Strokes",
+          "type": "integer"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "nature": {
+          "$ref": "#/$defs/IssueNature"
+        },
+        "observations": {
+          "description": "Facts restated from the pack data. No new numbers.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Observations",
+          "type": "array"
+        },
+        "occurrences": {
+          "minimum": 0,
+          "title": "Occurrences",
+          "type": "integer"
+        },
+        "percentage": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Percentage",
+          "type": "number"
+        },
+        "priority": {
+          "description": "1 = most important. Unique per result.",
+          "minimum": 1,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "recommended_exercises": {
+          "items": {
+            "$ref": "#/$defs/Exercise"
+          },
+          "title": "Recommended Exercises",
+          "type": "array"
+        },
+        "relevance": {
+          "$ref": "#/$defs/Relevance"
+        },
+        "stroke_ids": {
+          "description": "Strokes showing the issue (len = occurrences)",
+          "items": {
+            "type": "string"
+          },
+          "title": "Stroke Ids",
+          "type": "array"
+        },
+        "stroke_type": {
+          "$ref": "#/$defs/IssueStrokeType"
+        },
+        "timestamps_s": {
+          "description": "Representative times on the CFR proxy timeline",
+          "items": {
+            "type": "number"
+          },
+          "title": "Timestamps S",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "priority",
+        "name",
+        "description",
+        "stroke_type",
+        "nature",
+        "occurrences",
+        "evaluable_strokes",
+        "percentage",
+        "relevance",
+        "confidence",
+        "stroke_ids",
+        "observations",
+        "evidence",
+        "biomechanical_explanation"
+      ],
+      "title": "Issue",
+      "type": "object"
+    },
+    "IssueNature": {
+      "enum": [
+        "technical_error",
+        "stylistic_variation",
+        "uncertain"
+      ],
+      "title": "IssueNature",
+      "type": "string"
+    },
+    "IssueStrokeType": {
+      "enum": [
+        "forehand",
+        "backhand",
+        "both",
+        "unknown"
+      ],
+      "title": "IssueStrokeType",
+      "type": "string"
+    },
+    "PhaseAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "hypotheses": {
+          "description": "Interpretations that the data does not prove",
+          "items": {
+            "type": "string"
+          },
+          "title": "Hypotheses",
+          "type": "array"
+        },
+        "not_observable": {
+          "description": "What could not be assessed in this phase and why",
+          "items": {
+            "type": "string"
+          },
+          "title": "Not Observable",
+          "type": "array"
+        },
+        "observed": {
+          "description": "Only what the data shows, with references",
+          "items": {
+            "type": "string"
+          },
+          "title": "Observed",
+          "type": "array"
+        },
+        "phase": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PhaseName"
+            },
+            {
+              "const": "whole_interval",
+              "type": "string"
+            }
+          ],
+          "title": "Phase"
+        }
+      },
+      "required": [
+        "phase"
+      ],
+      "title": "PhaseAnalysis",
+      "type": "object"
+    },
+    "PhaseName": {
+      "enum": [
+        "preparation",
+        "backswing",
+        "forward_swing",
+        "contact",
+        "follow_through"
+      ],
+      "title": "PhaseName",
+      "type": "string"
+    },
+    "PositiveExecution": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "stroke_id": {
+          "minLength": 1,
+          "title": "Stroke Id",
+          "type": "string"
+        },
+        "stroke_type": {
+          "$ref": "#/$defs/IssueStrokeType"
+        },
+        "timestamp_s": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timestamp S"
+        }
+      },
+      "required": [
+        "stroke_id",
+        "stroke_type",
+        "description",
+        "evidence"
+      ],
+      "title": "PositiveExecution",
+      "type": "object"
+    },
+    "Recommendation": {
+      "additionalProperties": false,
+      "properties": {
+        "addresses_issue_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Addresses Issue Ids",
+          "type": "array"
+        },
+        "exercises": {
+          "items": {
+            "$ref": "#/$defs/Exercise"
+          },
+          "title": "Exercises",
+          "type": "array"
+        },
+        "priority": {
+          "minimum": 1,
+          "title": "Priority",
+          "type": "integer"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "priority",
+        "title",
+        "rationale",
+        "addresses_issue_ids"
+      ],
+      "title": "Recommendation",
+      "type": "object"
+    },
+    "Relevance": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ],
+      "title": "Relevance",
+      "type": "string"
+    },
+    "ResultKind": {
+      "enum": [
+        "session",
+        "single_stroke"
+      ],
+      "title": "ResultKind",
+      "type": "string"
+    },
+    "ResultTarget": {
+      "additionalProperties": false,
+      "description": "Single-stroke analyses only: which stroke/interval was analysed.",
+      "properties": {
+        "interval": {
+          "$ref": "#/$defs/TimeInterval"
+        },
+        "stroke_id": {
+          "title": "Stroke Id",
+          "type": "string"
+        },
+        "video_id": {
+          "title": "Video Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "video_id",
+        "stroke_id",
+        "interval"
+      ],
+      "title": "ResultTarget",
+      "type": "object"
+    },
+    "StrokeTypeAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "detected": {
+          "minimum": 0,
+          "title": "Detected",
+          "type": "integer"
+        },
+        "evaluable": {
+          "minimum": 0,
+          "title": "Evaluable",
+          "type": "integer"
+        },
+        "issue_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Issue Ids",
+          "type": "array"
+        },
+        "stroke_type": {
+          "enum": [
+            "forehand",
+            "backhand"
+          ],
+          "title": "Stroke Type",
+          "type": "string"
+        },
+        "summary": {
+          "description": "Separate assessment; say so when there is no data",
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stroke_type",
+        "detected",
+        "evaluable",
+        "summary"
+      ],
+      "title": "StrokeTypeAnalysis",
+      "type": "object"
+    },
+    "TimeInterval": {
+      "additionalProperties": false,
+      "description": "Closed interval in seconds on the *source video* timeline.",
+      "properties": {
+        "end_s": {
+          "minimum": 0,
+          "title": "End S",
+          "type": "number"
+        },
+        "start_s": {
+          "minimum": 0,
+          "title": "Start S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "start_s",
+        "end_s"
+      ],
+      "title": "TimeInterval",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "adapter": {
+      "description": "e.g. 'claude_code'",
+      "minLength": 1,
+      "title": "Adapter",
+      "type": "string"
+    },
+    "analysis_version": {
+      "description": "Version of the instructions used, from manifest.json",
+      "minLength": 1,
+      "title": "Analysis Version",
+      "type": "string"
+    },
+    "by_stroke_type": {
+      "items": {
+        "$ref": "#/$defs/StrokeTypeAnalysis"
+      },
+      "title": "By Stroke Type",
+      "type": "array"
+    },
+    "confidence": {
+      "description": "Overall confidence of the analysis",
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "evaluated_strokes": {
+      "$ref": "#/$defs/EvaluatedStrokes"
+    },
+    "generated_at": {
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "insufficient_evidence": {
+      "description": "True when the pack does not support technical conclusions",
+      "title": "Insufficient Evidence",
+      "type": "boolean"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/Issue"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "kind": {
+      "$ref": "#/$defs/ResultKind"
+    },
+    "language": {
+      "default": "it",
+      "minLength": 2,
+      "title": "Language",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "model": {
+      "description": "Model that produced the analysis",
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "pack_id": {
+      "description": "Copied from manifest.json",
+      "minLength": 1,
+      "title": "Pack Id",
+      "type": "string"
+    },
+    "phases": {
+      "items": {
+        "$ref": "#/$defs/PhaseAnalysis"
+      },
+      "title": "Phases",
+      "type": "array"
+    },
+    "positive_executions": {
+      "items": {
+        "$ref": "#/$defs/PositiveExecution"
+      },
+      "title": "Positive Executions",
+      "type": "array"
+    },
+    "recommendations": {
+      "items": {
+        "$ref": "#/$defs/Recommendation"
+      },
+      "title": "Recommendations",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "description": "Analysis id the pack was built for",
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "summary": {
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "target": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ResultTarget"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "kind",
+    "session_id",
+    "pack_id",
+    "analysis_version",
+    "adapter",
+    "model",
+    "generated_at",
+    "summary",
+    "evaluated_strokes",
+    "confidence",
+    "insufficient_evidence"
+  ],
+  "title": "AnalysisResult",
+  "type": "object"
+}

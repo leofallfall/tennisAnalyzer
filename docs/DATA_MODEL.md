@@ -50,6 +50,13 @@ results (JSON), created_at, updated_at, started_at, finished_at`.
 analysis. Their meaning is given by `Analysis.video_relation`, which the user must
 declare explicitly whenever more than one video is attached.
 
+### AiAnalysis **[implemented, experimental]**
+One AI interpretation request: `analysis_id`, `kind` (session | single_stroke), `pack_id`,
+`pack_dir` (relative to storage), `adapter`, `status` (awaiting_result | imported |
+invalid), `target`, `data_status`, validated `result` (`AnalysisResult` JSON), `model`,
+`validation_errors/warnings`, `import_attempts`, timestamps. Never modifies
+`Analysis.results`. See `AI_ANALYSIS.md`.
+
 ### ProcessingJob **[M1]**
 `id, analysis_id, kind, status, attempts, worker_id, created_at, started_at,
 finished_at, error`. Durable work queue consumed by the worker.

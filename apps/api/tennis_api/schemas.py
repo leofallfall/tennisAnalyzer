@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from tennis_api.models import AnalysisMode, AnalysisStatus, StrokeFilter, VideoRelation
 from tennis_cv.capabilities import Capability
 from tennis_cv.comparison.base import ViewAngle
+from tennis_cv.strokes.base import StrokeType
 
 
 class ApiModel(BaseModel):
@@ -139,3 +140,71 @@ class AnalysisSummaryOut(AnalysisStatusOut):
     title: str
     video_count: int
     created_at: datetime
+
+
+class SingleStrokeAiRequest(ApiModel):
+    """Pick the stroke for a Single Stroke AI analysis.
+
+    Either ``stroke_id`` (a stroke listed in a session Evidence Pack) or an interval on
+    one video. Without both, a single-stroke upload is analysed as a whole clip.
+    """
+
+    stroke_id: str | None = None
+    video_id: str | None = None
+    start_s: float | None = Field(default=None, ge=0)
+    end_s: float | None = Field(default=None, ge=0)
+    declared_stroke_type: StrokeType | None = Field(
+        default=None, description="Stroke type stated by the user (never inferred)"
+    )
+    source_ai_analysis_id: str | None = None
+    issue_id: str | None = None
+
+    @model_validator(mode="after")
+    def _choice(self) -> SingleStrokeAiRequest:
+        if self.stroke_id and (self.start_s is not None or self.end_s is not None):
+            raise ValueError("Give either stroke_id or start_s/end_s, not both")
+        if (self.start_s is None) != (self.end_s is None):
+            raise ValueError("start_s and end_s must be given together")
+        if self.start_s is not None and self.end_s is not None and self.end_s <= self.start_s:
+            raise ValueError("end_s must be greater than start_s")
+        if bool(self.source_ai_analysis_id) != bool(self.issue_id):
+            raise ValueError("source_ai_analysis_id and issue_id must be given together")
+        return self
+
+
+class AiHandoffOut(ApiModel):
+    adapter: str
+    interactive: bool
+    pack_path: str
+    command: str
+    result_path: str
+    steps: list[str]
+
+
+class AiValidationProblemOut(ApiModel):
+    code: str
+    message: str
+    location: str | None = None
+
+
+class AiAnalysisOut(ApiModel):
+    id: str
+    analysis_id: str
+    kind: str
+    pack_id: str
+    pack_path: str = Field(description="Path to use with Claude Code (relative to repo root)")
+    adapter: str
+    status: str
+    target: dict[str, Any] | None
+    data_status: dict[str, Any]
+    result: dict[str, Any] | None = Field(
+        description="Validated AnalysisResult (see the analysis_result contract)"
+    )
+    model: str | None
+    validation_errors: list[AiValidationProblemOut]
+    validation_warnings: list[AiValidationProblemOut]
+    import_attempts: int
+    created_at: datetime
+    imported_at: datetime | None
+    handoff: AiHandoffOut | None = None
+    images: list[dict[str, Any]] = Field(default_factory=list)

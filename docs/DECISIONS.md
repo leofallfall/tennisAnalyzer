@@ -77,3 +77,25 @@ feature that does).
 ### ADR-012 Python 3.12
 `.python-version` pins 3.12 (uv installs it if missing) for the widest compatibility with
 MediaPipe and future PyTorch wheels; packages declare `>=3.11,<3.14`.
+
+### ADR-013 Personal AI analysis through Claude Code (no API) behind an `AIClient` port
+**Context:** Leonardo wants Claude's interpretation during development without paid API
+calls, using Claude Code on his own subscription, and a later switch to the Anthropic API
+without rewrites. The audit (docs/audit, step F 3.1) already planned an `AiClient` port.
+**Decision:**
+- The app builds a model-independent **Evidence Pack** (small JSON files plus ≤ 768 px frames, with SHA-256 integrity).
+- The user runs `/analizza-sessione <pack>` interactively in Claude Code, which writes only `analysis_result.json`.
+- The app imports that file after strict validation: schema plus cross-checks against the pack.
+- `AIClient` has `ClaudeCodeAdapter` (returns instructions; executes nothing) and an `AnthropicAPIAdapter` stub.
+- Results go to a new `ai_analyses` table, never into `Analysis.results`.
+- The AI layer lives in `apps/api/tennis_api/ai/`, not the engine, so the engine stays LLM-free (ADR-002).
+- Packs are built synchronously in the API: a few frames, seconds of work. This is a small exception to "API = light" that stays as long as packs stay small.
+
+**Alternatives rejected:**
+- Automating Claude Code or reusing subscription tokens as an API: not an officially supported use, and the user excluded it.
+- A local LLM: excluded by the user.
+- Building packs in the worker: more moving parts for a few seconds of work.
+
+**Consequences:**
+- Until stroke detection exists (M2), real packs carry no strokes, and validation forces "insufficient evidence" session results.
+- Single-stroke analysis works on user-selected intervals with 2D angle time series.

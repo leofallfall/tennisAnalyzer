@@ -49,6 +49,12 @@ CAPABILITIES: list[Capability] = [
     ),
     Capability(module="ball", status=ModuleStatus.NOT_IMPLEMENTED, description="Ball detection"),
     Capability(
+        module="ai_interpretation",
+        status=ModuleStatus.EXPERIMENTAL,
+        description="Evidence Packs + validated import of results written by Claude Code "
+        "(apps/api, personal mode). The app makes no LLM calls; no stroke data yet.",
+    ),
+    Capability(
         module="comparison",
         status=ModuleStatus.NOT_IMPLEMENTED,
         description="Execution comparison, normalisation, camera compatibility",

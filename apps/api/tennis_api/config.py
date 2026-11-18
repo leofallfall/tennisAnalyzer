@@ -30,6 +30,11 @@ class Settings:
     api_host: str = field(default_factory=lambda: os.environ.get("TPA_API_HOST", "127.0.0.1"))
     api_port: int = field(default_factory=lambda: int(os.environ.get("TPA_API_PORT", "8000")))
     pose_stride: int = field(default_factory=lambda: int(os.environ.get("TPA_POSE_STRIDE", "1")))
+    ai_adapter: str = field(
+        default_factory=lambda: os.environ.get("TPA_AI_ADAPTER", "claude_code"),
+        metadata={"doc": "AIClient adapter: claude_code (default) or anthropic_api (future)"},
+    )
+    ai_language: str = field(default_factory=lambda: os.environ.get("TPA_AI_LANGUAGE", "it"))
 
     @property
     def resolved_database_url(self) -> str:
@@ -42,6 +47,11 @@ class Settings:
     @property
     def analyses_dir(self) -> Path:
         return self.storage_dir / "analyses"
+
+    @property
+    def ai_dir(self) -> Path:
+        """Evidence Packs: storage/ai/<analysis_id>/<pack_id>/."""
+        return self.storage_dir / "ai"
 
 
 def get_settings() -> Settings:

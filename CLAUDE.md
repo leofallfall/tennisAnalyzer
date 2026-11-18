@@ -53,7 +53,11 @@ uv run python scripts/download_models.py      # MediaPipe model → models/
 uv run pytest -m "not slow"                   # fast Python tests
 uv run python scripts/pose_experiment.py VIDEO  # CV experiment from the CLI
 uv run python scripts/export_contracts.py     # after changing engine contracts
+uv run python scripts/ai_pack.py validate PACK  # check an AI result before importing
 ```
+
+Personal AI analysis: `/analizza-sessione <pack>` (skill in `.claude/skills/`) interprets an
+Evidence Pack and writes only `analysis_result.json`. See `docs/AI_ANALYSIS.md`.
 
 ## Code conventions
 

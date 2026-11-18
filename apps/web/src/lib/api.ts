@@ -1,10 +1,12 @@
 import type {
+  AiAnalysis,
   Analysis,
   AnalysisCreate,
   AnalysisStatusInfo,
   AnalysisSummary,
   ApiErrorBody,
   PoseSequence,
+  SingleStrokeAiRequest,
   SystemInfo,
   Video,
 } from '@tpa/contracts'
@@ -58,6 +60,13 @@ export const api = {
   startAnalysis: (id: string) =>
     request<AnalysisStatusInfo>(`/api/analyses/${id}/start`, { method: 'POST' }),
   getPose: (url: string) => request<PoseSequence>(url),
+  listAiAnalyses: (analysisId: string) => request<AiAnalysis[]>(`/api/analyses/${analysisId}/ai`),
+  prepareSessionAi: (analysisId: string) =>
+    request<AiAnalysis>(`/api/analyses/${analysisId}/ai/session`, { method: 'POST' }),
+  prepareSingleStrokeAi: (analysisId: string, body: SingleStrokeAiRequest) =>
+    request<AiAnalysis>(`/api/analyses/${analysisId}/ai/single-stroke`, json(body)),
+  importAiResult: (aiId: string) =>
+    request<AiAnalysis>(`/api/ai-analyses/${aiId}/import`, { method: 'POST' }),
 }
 
 /** Upload with progress events (fetch has no upload progress). */

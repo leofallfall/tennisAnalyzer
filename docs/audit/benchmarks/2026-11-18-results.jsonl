@@ -1,0 +1,15 @@
+{"src": "/tmp/claude-0/bench/src_1080p60.mp4", "stride": 1, "overlay": true, "cpus": 4, "wall_s": 263.9, "cpu_s_self": 213.3, "cpu_s_children_ffmpeg": 185.9, "peak_rss_mb_python": 426, "peak_rss_mb_ffmpeg": 426, "timings": {"probe_and_validate": 0.1, "preprocess": 27.2, "decode_quality_pose_overlay": 235.5, "write_results": 0.1}, "pose_ms_per_frame": 31.4, "frames": 3600, "detection_rate": 0.553, "sizes_mb": {"report.json": 0.0, "proxy.mp4": 14.87, "pose.json": 10.54, "overlay.mp4": 7.61}}
+{"src": "/tmp/claude-0/bench/src_1080p60.mp4", "stride": 2, "overlay": false, "cpus": 4, "wall_s": 89.2, "cpu_s_self": 77.9, "cpu_s_children_ffmpeg": 91.9, "peak_rss_mb_python": 358, "peak_rss_mb_ffmpeg": 402, "timings": {"probe_and_validate": 0.1, "preprocess": 27.6, "decode_quality_pose_overlay": 60.5, "write_results": 0.0}, "pose_ms_per_frame": 29.1, "frames": 1800, "detection_rate": 0.548, "sizes_mb": {"report.json": 0.0, "proxy.mp4": 14.87, "pose.json": 5.22}}
+{"src": "/tmp/claude-0/bench/src_1080p60.mp4", "stride": 1, "overlay": true, "cpus": 1, "wall_s": 328.5, "cpu_s_self": 176.9, "cpu_s_children_ffmpeg": 147.3, "peak_rss_mb_python": 412, "peak_rss_mb_ffmpeg": 412, "timings": {"probe_and_validate": 0.1, "preprocess": 72.6, "decode_quality_pose_overlay": 254.9, "write_results": 0.1}, "pose_ms_per_frame": 26.7, "frames": 3600, "detection_rate": 0.589, "sizes_mb": {"report.json": 0.0, "proxy.mp4": 14.86, "pose.json": 11.21, "overlay.mp4": 7.65}}
+{"src": "/tmp/claude-0/bench/src_1080p60.mp4", "stride": 1, "overlay": true, "cpus": 2, "wall_s": 274.0, "cpu_s_self": 188.2, "cpu_s_children_ffmpeg": 156.9, "peak_rss_mb_python": 413, "peak_rss_mb_ffmpeg": 413, "timings": {"probe_and_validate": 0.1, "preprocess": 42.0, "decode_quality_pose_overlay": 230.8, "write_results": 0.1}, "pose_ms_per_frame": 28.3, "frames": 3600, "detection_rate": 0.589, "sizes_mb": {"report.json": 0.0, "proxy.mp4": 14.86, "pose.json": 11.21, "overlay.mp4": 7.65}}
+{"stage":"decode_h264_4c","res":{"wall_s": 10.56, "cpu_s": 24.53, "peak_rss_mb": 119.0, "rc": 0, "err": ""}}
+{"stage":"decode_h264_1c","res":{"wall_s": 19.36, "cpu_s": 19.11, "peak_rss_mb": 78.2, "rc": 0, "err": ""}}
+{"stage":"decode_hevc20s_4c","res":{"wall_s": 4.97, "cpu_s": 9.22, "peak_rss_mb": 125.2, "rc": 0, "err": ""}}
+{"stage":"decode_hevc20s_1c","res":{"wall_s": 8.46, "cpu_s": 8.34, "peak_rss_mb": 92.4, "rc": 0, "err": ""}}
+{"stage":"proxy_current_4c","res":{"wall_s": 27.67, "cpu_s": 91.07, "peak_rss_mb": 402.0, "rc": 0, "err": ""}}
+{"stage":"proxy_current_1c","res":{"wall_s": 71.22, "cpu_s": 70.33, "peak_rss_mb": 232.2, "rc": 0, "err": ""}}
+{"stage":"proxy_720p_crf23_4c","res":{"wall_s": 18.59, "cpu_s": 51.18, "peak_rss_mb": 248.5, "rc": 0, "err": ""}}
+{"stage":"proxy_720p_crf23_1c","res":{"wall_s": 45.83, "cpu_s": 45.21, "peak_rss_mb": 151.8, "rc": 0, "err": ""}}
+{"stage":"scan_10fps_256w_1c","res":{"wall_s": 1.82, "cpu_s": 1.8, "peak_rss_mb": 71.7, "rc": 0, "err": ""}}
+{"stage":"scan_10fps_256w_full_decode_1c","res":{"wall_s": 20.2, "cpu_s": 19.94, "peak_rss_mb": 78.5, "rc": 0, "err": ""}}
+DONE

@@ -26,6 +26,9 @@ class ToolStatus(ApiModel):
     name: str
     available: bool
     version: str | None = None
+    detail: str | None = Field(
+        default=None, description="Why the tool is unavailable and how to fix it"
+    )
 
 
 class SystemInfo(ApiModel):
@@ -40,6 +43,9 @@ class SystemInfo(ApiModel):
     )
     tools: list[ToolStatus]
     pose_model: ToolStatus
+    pose_runtime: ToolStatus = Field(
+        description="MediaPipe really loads (native libraries + model), not just imports"
+    )
     capabilities: list[Capability]
 
 

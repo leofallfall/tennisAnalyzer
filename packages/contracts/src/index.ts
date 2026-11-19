@@ -245,6 +245,8 @@ export interface ToolStatus {
   name: string
   available: boolean
   version: string | null
+  /** Why the tool is unavailable and how to fix it. */
+  detail?: string | null
 }
 
 export interface SystemInfo {
@@ -257,6 +259,8 @@ export interface SystemInfo {
   storage_writable: boolean
   tools: ToolStatus[]
   pose_model: ToolStatus
+  /** MediaPipe really loads (native libraries + model), not just imports. */
+  pose_runtime: ToolStatus
   capabilities: Capability[]
 }
 

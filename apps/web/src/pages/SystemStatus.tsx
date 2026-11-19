@@ -61,7 +61,7 @@ export function SystemStatusPage() {
                 ]}
               />
               <ul className="flex flex-col gap-1.5">
-                {[...data.tools, data.pose_model].map((t) => (
+                {[...data.tools, data.pose_model, data.pose_runtime].map((t) => (
                   <li key={t.name} className="flex items-center gap-2 text-sm">
                     {t.available ? (
                       <CheckCircle2 className="size-4 text-success" aria-label="available" />
@@ -75,6 +75,11 @@ export function SystemStatusPage() {
                   </li>
                 ))}
               </ul>
+              {!data.pose_runtime.available && data.pose_runtime.detail && (
+                <p className="text-xs text-danger" role="alert">
+                  Pose estimation cannot run: {data.pose_runtime.detail}
+                </p>
+              )}
               {!data.pose_model.available && (
                 <p className="text-xs text-danger">
                   Pose model missing. Run{' '}

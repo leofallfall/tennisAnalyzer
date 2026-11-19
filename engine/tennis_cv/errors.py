@@ -68,6 +68,17 @@ class ModelNotAvailableError(TennisCVError):
     code = "model_not_available"
 
 
+class PoseRuntimeUnavailableError(TennisCVError):
+    """The pose estimator's native runtime cannot be loaded (e.g. missing system libraries).
+
+    On Linux MediaPipe needs ``libEGL.so.1`` / ``libGLESv2.so.2`` (packages ``libegl1``,
+    ``libgles2``). The Python import succeeds without them; the failure only appears when
+    the landmarker is created.
+    """
+
+    code = "pose_runtime_unavailable"
+
+
 class NotYetImplementedError(TennisCVError, NotImplementedError):
     """Raised by interfaces whose implementation does not exist yet.
 

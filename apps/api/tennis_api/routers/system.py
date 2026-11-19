@@ -7,10 +7,11 @@ import sys
 from fastapi import APIRouter
 
 from tennis_api.deps import SettingsDep
+from tennis_api.redaction import redact
 from tennis_api.schemas import HealthResponse, SystemInfo, ToolStatus
 from tennis_cv import __version__ as engine_version
 from tennis_cv.capabilities import CAPABILITIES
-from tennis_cv.pose.mediapipe_estimator import default_model_path
+from tennis_cv.pose.mediapipe_estimator import check_pose_runtime, default_model_path
 from tennis_cv.video.ffmpeg import tool_version
 
 API_VERSION = "0.1.0"
@@ -36,6 +37,7 @@ def system_info(settings: SettingsDep) -> SystemInfo:
         mp_version = None
     tools.append(ToolStatus(name="mediapipe", available=mp_version is not None, version=mp_version))
     model = default_model_path()
+    runtime_ok, runtime_reason = check_pose_runtime()
     db_url = settings.resolved_database_url
     return SystemInfo(
         api_version=API_VERSION,
@@ -46,5 +48,10 @@ def system_info(settings: SettingsDep) -> SystemInfo:
         storage_writable=os.access(settings.storage_dir, os.W_OK),
         tools=tools,
         pose_model=ToolStatus(name=model.name, available=model.is_file(), version=None),
+        pose_runtime=ToolStatus(
+            name="mediapipe_runtime",
+            available=runtime_ok,
+            detail=redact(runtime_reason, settings) if runtime_reason else None,
+        ),
         capabilities=CAPABILITIES,
     )

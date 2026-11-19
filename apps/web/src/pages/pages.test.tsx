@@ -138,3 +138,33 @@ describe('analysis detail', () => {
     expect(screen.getByRole('button', { name: 'Retry processing' })).toBeInTheDocument()
   })
 })
+
+const systemInfo = {
+  api_version: '0.1.0',
+  engine_version: '0.1.0',
+  python_version: '3.12.3',
+  platform: 'Linux',
+  database: 'sqlite',
+  storage_writable: true,
+  tools: [{ name: 'ffmpeg', available: true, version: 'ffmpeg 6.1' }],
+  pose_model: { name: 'pose_landmarker_full.task', available: true, version: null },
+  pose_runtime: {
+    name: 'mediapipe_runtime',
+    available: false,
+    version: null,
+    detail: 'The MediaPipe runtime could not be loaded (OSError). Install libegl1 libgles2.',
+  },
+  capabilities: [],
+}
+
+describe('system status', () => {
+  it('reports a MediaPipe runtime that cannot load, with the fix', async () => {
+    mockFetch({ '/api/system/info': systemInfo, '/api/analyses': [] })
+    renderAt('/system')
+    expect(await screen.findByText(/Pose estimation cannot run/)).toHaveTextContent(
+      'libegl1 libgles2',
+    )
+    expect(screen.getByText('mediapipe_runtime')).toBeInTheDocument()
+    expect(screen.getByText('Writable')).toBeInTheDocument()
+  })
+})

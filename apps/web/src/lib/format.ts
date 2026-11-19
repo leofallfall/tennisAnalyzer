@@ -36,9 +36,16 @@ export function formatFps(fps: number | null | undefined): string {
   return `${Number.isInteger(fps) ? fps : fps.toFixed(2)} fps`
 }
 
+/** Timestamps from the API are UTC. A string without an offset (written by an older API
+ * from SQLite) is read as UTC too, never as browser-local time. */
+export function parseApiDate(iso: string): Date {
+  const hasOffset = /(Z|[+-]\d{2}:?\d{2})$/i.test(iso)
+  return new Date(hasOffset ? iso : `${iso}Z`)
+}
+
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '—'
-  return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+  return parseApiDate(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 }
 
 export function humanize(code: string): string {

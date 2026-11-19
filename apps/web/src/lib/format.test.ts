@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatBytes, formatClock, formatFps, formatPercent, humanize } from './format'
+import {
+  formatBytes,
+  formatClock,
+  formatFps,
+  formatPercent,
+  humanize,
+  parseApiDate,
+} from './format'
 
 describe('format helpers', () => {
   it('formats bytes', () => {
@@ -19,5 +26,11 @@ describe('format helpers', () => {
   })
   it('humanizes codes', () => {
     expect(humanize('partially_observable')).toBe('Partially observable')
+  })
+  it('reads API timestamps as UTC, with or without an offset', () => {
+    const expected = '2026-11-19T11:02:45.559Z'
+    expect(parseApiDate('2026-11-19T11:02:45.559541').toISOString()).toBe(expected)
+    expect(parseApiDate('2026-11-19T11:02:45.559541Z').toISOString()).toBe(expected)
+    expect(parseApiDate('2026-11-19T12:02:45.559541+01:00').toISOString()).toBe(expected)
   })
 })

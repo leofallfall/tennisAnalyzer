@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 import numpy.typing as npt
 
-from tennis_cv.errors import PreprocessError
+from tennis_cv.errors import PreprocessError, scrub_paths
 from tennis_cv.pose.landmarks import SKELETON_CONNECTIONS
 from tennis_cv.pose.models import PoseFrame
 from tennis_cv.video.ffmpeg import find_tool, run_tool
@@ -100,6 +100,7 @@ class OverlayWriter:
         self._tmp.unlink(missing_ok=True)
         if result.returncode != 0:
             raise PreprocessError(
-                "Overlay transcoding failed", details={"stderr": result.stderr[-2000:]}
+                "Overlay transcoding failed",
+                details={"stderr": scrub_paths(result.stderr, self._tmp, self.dst)[-2000:]},
             )
         return self.dst

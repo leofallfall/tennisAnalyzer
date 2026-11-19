@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import platform
 import sys
 
@@ -42,7 +43,7 @@ def system_info(settings: SettingsDep) -> SystemInfo:
         python_version=sys.version.split()[0],
         platform=platform.platform(),
         database=db_url.split(":", 1)[0],
-        storage_dir=str(settings.storage_dir),
+        storage_writable=os.access(settings.storage_dir, os.W_OK),
         tools=tools,
         pose_model=ToolStatus(name=model.name, available=model.is_file(), version=None),
         capabilities=CAPABILITIES,

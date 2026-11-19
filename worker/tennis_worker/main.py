@@ -11,7 +11,6 @@ import logging
 import os
 import socket
 import time
-import traceback
 from collections.abc import Callable
 from typing import Any
 
@@ -20,7 +19,15 @@ from sqlalchemy.orm import Session
 
 from tennis_api.config import Settings, get_settings
 from tennis_api.db import Database
-from tennis_api.models import Analysis, AnalysisStatus, JobStatus, ProcessingJob, utcnow
+from tennis_api.models import (
+    Analysis,
+    AnalysisStatus,
+    JobStatus,
+    ProcessingJob,
+    new_id,
+    utcnow,
+)
+from tennis_api.redaction import redact
 from tennis_cv.errors import TennisCVError
 from tennis_worker.jobs import JOB_HANDLERS
 
@@ -107,18 +114,22 @@ class Worker:
                     raise TennisCVError(f"No handler for job kind '{job.kind}'")
                 results = handler(analysis, self.settings, report_progress)
             except TennisCVError as exc:
-                log.warning("Job %s failed: %s", job_id, exc.message)
+                log.warning("Job %s failed: %s %s", job_id, exc.code, exc.message)
                 s.rollback()
-                self._fail(s, job, exc.code, exc.message, exc.details)
+                message, details = redact((exc.message, exc.details), self.settings)
+                self._fail(s, job, exc.code, message, details)
             except Exception as exc:
-                log.exception("Job %s crashed", job_id)
+                # The traceback (with server paths) stays in the worker log; the stored
+                # error carries only an id to find it there (M1.10).
+                error_id = new_id()[:12]
+                log.exception("Job %s crashed (error_id=%s)", job_id, error_id)
                 s.rollback()
                 self._fail(
                     s,
                     job,
                     "internal_error",
-                    f"{type(exc).__name__}: {exc}",
-                    {"traceback": traceback.format_exc()[-4000:]},
+                    redact(f"{type(exc).__name__}: {exc}", self.settings),
+                    {"error_id": error_id, "exception": type(exc).__name__},
                 )
             else:
                 analysis.status = AnalysisStatus.COMPLETED.value

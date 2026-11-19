@@ -13,15 +13,18 @@ first decoded video frame of the source.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
 from pydantic import Field
 
 from tennis_cv.common import StrictModel
-from tennis_cv.errors import PreprocessError
+from tennis_cv.errors import PreprocessError, scrub_paths
 from tennis_cv.video.ffmpeg import find_tool, run_tool
 from tennis_cv.video.metadata import VideoMetadata, probe_video
+
+log = logging.getLogger(__name__)
 
 
 class PreprocessOptions(StrictModel):
@@ -109,9 +112,11 @@ def preprocess_video(
     result = run_tool(cmd, timeout_s=opts.timeout_s)
     elapsed = (time.perf_counter() - started) * 1000
     if result.returncode != 0 or not dst_p.is_file():
+        # The full command holds absolute paths: server log only, never the API.
+        log.warning("FFmpeg preprocessing failed: %s", " ".join(cmd))
         raise PreprocessError(
             "FFmpeg preprocessing failed",
-            details={"stderr": result.stderr.strip()[-2000:], "command": " ".join(cmd)},
+            details={"stderr": scrub_paths(result.stderr.strip(), src_s, dst_p)[-2000:]},
         )
     out_meta = probe_video(dst_p)
     return PreprocessResult(

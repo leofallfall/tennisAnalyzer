@@ -34,7 +34,10 @@ class SystemInfo(ApiModel):
     python_version: str
     platform: str
     database: str
-    storage_dir: str
+    storage_writable: bool = Field(
+        description="Whether the API can write to its storage directory. The path itself "
+        "is not exposed (M1.10)."
+    )
     tools: list[ToolStatus]
     pose_model: ToolStatus
     capabilities: list[Capability]

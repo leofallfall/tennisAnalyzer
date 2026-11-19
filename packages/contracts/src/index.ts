@@ -253,7 +253,8 @@ export interface SystemInfo {
   python_version: string
   platform: string
   database: string
-  storage_dir: string
+  /** The storage path itself is not exposed (M1.10). */
+  storage_writable: boolean
   tools: ToolStatus[]
   pose_model: ToolStatus
   capabilities: Capability[]

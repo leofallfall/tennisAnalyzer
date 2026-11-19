@@ -186,10 +186,19 @@ def run_video_processing(
     artifacts = {"proxy": PROXY_NAME, "pose": POSE_NAME}
     if overlay_path is not None:
         artifacts["overlay"] = OVERLAY_NAME
+    # The report reaches API clients: file references are relative, never absolute paths
+    # (the source is named by its base name, the proxy relative to ``output_dir``).
+    public_meta = meta.model_copy(update={"path": Path(meta.path).name})
+    public_prep = prep.model_copy(
+        update={
+            "output_path": PROXY_NAME,
+            "metadata": prep.metadata.model_copy(update={"path": PROXY_NAME}),
+        }
+    )
     report = ProcessingReport(
-        source_metadata=meta,
+        source_metadata=public_meta,
         validation=validation,
-        preprocess=prep,
+        preprocess=public_prep,
         quality=quality,
         pose_estimator=estimator.name,
         pose_model=estimator.model,

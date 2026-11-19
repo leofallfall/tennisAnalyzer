@@ -57,7 +57,7 @@ export function SystemStatusPage() {
                   ['Engine', data.engine_version],
                   ['Python', data.python_version],
                   ['Database', data.database],
-                  ['Storage', data.storage_dir],
+                  ['Storage', data.storage_writable ? 'Writable' : 'Not writable'],
                 ]}
               />
               <ul className="flex flex-col gap-1.5">

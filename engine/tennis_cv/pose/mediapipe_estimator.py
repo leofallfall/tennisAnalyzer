@@ -62,9 +62,9 @@ class MediaPipePoseEstimator(PoseEstimator):
         path = Path(model_path) if model_path else default_model_path()
         if not path.is_file():
             raise ModelNotAvailableError(
-                f"MediaPipe pose model not found at {path}. "
+                f"MediaPipe pose model '{path.name}' not found in the models directory. "
                 "Run: uv run python scripts/download_models.py",
-                details={"model_path": str(path)},
+                details={"model_file": path.name},
             )
         import mediapipe as mp  # imported lazily: heavy native module
 

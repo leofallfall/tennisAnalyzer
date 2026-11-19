@@ -1,6 +1,24 @@
-"""Engine error hierarchy. Every error carries a stable machine-readable ``code``."""
+"""Engine error hierarchy. Every error carries a stable machine-readable ``code``.
+
+Error messages and ``details`` reach API clients: they name files by their base name
+only, never by absolute path (M1.10). Full paths and commands go to the server log.
+"""
 
 from __future__ import annotations
+
+from os import PathLike
+
+
+def scrub_paths(text: str, *paths: str | PathLike[str]) -> str:
+    """Replace every occurrence of the given paths in ``text`` with their base name.
+
+    Used for tool output (ffmpeg/ffprobe stderr) that repeats the input path.
+    """
+    for p in sorted((str(x) for x in paths), key=len, reverse=True):
+        if p:
+            name = p.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+            text = text.replace(p, name)
+    return text
 
 
 class TennisCVError(Exception):

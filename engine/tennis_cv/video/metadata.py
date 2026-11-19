@@ -14,7 +14,7 @@ from typing import Any
 from pydantic import Field
 
 from tennis_cv.common import StrictModel
-from tennis_cv.errors import ProbeError
+from tennis_cv.errors import ProbeError, scrub_paths
 from tennis_cv.video.ffmpeg import find_tool, run_tool
 
 # avg vs nominal frame-rate disagreement above this ratio is treated as VFR.
@@ -103,13 +103,13 @@ def parse_ffprobe_output(data: dict[str, Any], path: str) -> VideoMetadata:
     streams = data.get("streams") or []
     video = next((s for s in streams if s.get("codec_type") == "video"), None)
     if video is None:
-        raise ProbeError("No video stream found in file", details={"path": path})
+        raise ProbeError("No video stream found in file", details={"file": Path(path).name})
     fmt = data.get("format") or {}
 
     width = _parse_int(video.get("width")) or 0
     height = _parse_int(video.get("height")) or 0
     if width <= 0 or height <= 0:
-        raise ProbeError("Video stream has no valid dimensions", details={"path": path})
+        raise ProbeError("Video stream has no valid dimensions", details={"file": Path(path).name})
 
     rotation = _rotation(video)
     swap = rotation in (90, 270)
@@ -147,7 +147,7 @@ def probe_video(path: str | Path, *, timeout_s: float = 60) -> VideoMetadata:
     """Run ffprobe on ``path`` and return structured metadata."""
     p = Path(path)
     if not p.is_file():
-        raise ProbeError(f"File not found: {p}", details={"path": str(p)})
+        raise ProbeError(f"File not found: {p.name}", details={"file": p.name})
     cmd = [
         find_tool("ffprobe"),
         "-v",
@@ -162,10 +162,10 @@ def probe_video(path: str | Path, *, timeout_s: float = 60) -> VideoMetadata:
     if result.returncode != 0:
         raise ProbeError(
             "ffprobe could not read the file as a video",
-            details={"path": str(p), "stderr": result.stderr.strip()[-2000:]},
+            details={"file": p.name, "stderr": scrub_paths(result.stderr.strip(), p)[-2000:]},
         )
     try:
         data = json.loads(result.stdout or "{}")
     except json.JSONDecodeError as exc:
-        raise ProbeError("ffprobe returned invalid JSON", details={"path": str(p)}) from exc
+        raise ProbeError("ffprobe returned invalid JSON", details={"file": p.name}) from exc
     return parse_ffprobe_output(data, str(p))

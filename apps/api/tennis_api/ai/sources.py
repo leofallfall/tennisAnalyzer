@@ -31,7 +31,6 @@ def video_sources(a: Analysis, settings: Settings) -> list[VideoSource]:
             VideoSource(
                 info=pk.VideoInfo(
                     video_id=link.video_id,
-                    original_filename=link.video.original_filename,
                     camera_view=link.camera_view,
                     duration_s=proxy.duration_s,
                     average_fps=src.average_fps,
@@ -52,13 +51,17 @@ def video_sources(a: Analysis, settings: Settings) -> list[VideoSource]:
 
 
 def session_metadata(a: Analysis) -> pk.SessionMetadata:
+    """Technical session metadata only.
+
+    The analysis title, the free-text focus and the original file names are left out
+    on purpose (privacy): they can contain names or health information and the analyst
+    does not need them. Videos are identified by their opaque ids.
+    """
     return pk.SessionMetadata(
         analysis_id=a.id,
-        title=a.title,
         mode=a.mode,
         created_at=a.created_at,
         stroke_filter=a.stroke_filter,
-        focus=a.focus,
         video_relation=a.video_relation,
         videos=[],  # filled by the caller with the videos in the pack
         recording_conditions={

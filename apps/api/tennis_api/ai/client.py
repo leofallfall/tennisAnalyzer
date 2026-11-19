@@ -22,7 +22,7 @@ from typing import ClassVar
 
 from tennis_api.ai.pack import PackKind
 from tennis_api.ai.result import RESULT_FILENAME
-from tennis_api.ai.validation import ValidationOutcome, validate_result_file
+from tennis_api.ai.validation import PackAnchor, ValidationOutcome, validate_result_file
 from tennis_cv.common import StrictModel
 from tennis_cv.errors import NotYetImplementedError
 
@@ -48,9 +48,13 @@ class AIClient(ABC):
     def request_analysis(self, pack_dir: Path, display_path: str, kind: PackKind) -> Handoff:
         """Start (or explain how to start) the analysis of a prepared pack."""
 
-    def collect_result(self, pack_dir: Path) -> ValidationOutcome:
-        """Read and validate ``analysis_result.json``. Same for every adapter."""
-        return validate_result_file(pack_dir)
+    def collect_result(self, pack_dir: Path, anchor: PackAnchor | None) -> ValidationOutcome:
+        """Read and validate ``analysis_result.json``. Same for every adapter.
+
+        ``anchor`` is what the database recorded when the pack was created; ``None``
+        (a legacy pack) is rejected.
+        """
+        return validate_result_file(pack_dir, anchor)
 
 
 class ClaudeCodeAdapter(AIClient):

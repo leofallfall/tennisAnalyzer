@@ -61,7 +61,9 @@ _COMMON_RULES = """\
    infortunio, programmi atletici, punteggi o voti.
 10. **Isolamento.** Leggi solo i file di questa cartella. Scrivi **un solo file**:
     `{result}` in questa cartella. Non modificare nessun altro file del pacchetto (sono
-    verificati con hash) né file del progetto, del database o dei risultati CV.
+    verificati con hash, e l'hash di `manifest.json` è registrato dall'app fuori dal
+    pacchetto) né file del progetto, del database o dei risultati CV. Non creare altri
+    file, copie o link simbolici nella cartella: l'importazione verrebbe rifiutata.
 """
 
 _SESSION_TASK = """\

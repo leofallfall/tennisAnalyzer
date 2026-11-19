@@ -4,7 +4,8 @@ The pack is a directory of small JSON files plus a few JPEG frames. It is model-
 adapter-independent. It reuses the engine contracts (``Measurement``, ``StrokePhase``,
 ``QualityReport``, ``PoseSummary``) instead of defining parallel schemas.
 
-Never in a pack: the video, the full ``pose.json``, credentials, absolute server paths.
+Never in a pack: the video, the full ``pose.json``, credentials, absolute server paths,
+or free text typed by the user (analysis title, focus, original file name).
 """
 
 from __future__ import annotations
@@ -13,16 +14,18 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
+from tennis_api.ai.result import RESULT_FILENAME
+from tennis_api.ai.safe_files import check_pack_path
 from tennis_cv.biomechanics.measurement import Measurement
 from tennis_cv.common import Observability, Reliability, StrictModel, TimeInterval
 from tennis_cv.pose.models import PoseSummary
 from tennis_cv.quality.assessment import QualityReport
 from tennis_cv.strokes.base import StrokePhase, StrokeType
 
-PACK_SCHEMA_VERSION = "1.0"
-INSTRUCTIONS_VERSION = "ai-instructions/1.0"
+PACK_SCHEMA_VERSION = "1.1"  # 1.1: no title/focus/original file name; safe paths
+INSTRUCTIONS_VERSION = "ai-instructions/1.1"  # 1.1: no extra files or links in the pack
 MANIFEST = "manifest.json"
 SESSION_METADATA = "session_metadata.json"
 DATA_QUALITY = "data_quality.json"
@@ -51,8 +54,7 @@ class DataStatus(StrEnum):
 
 
 class VideoInfo(StrictModel):
-    video_id: str
-    original_filename: str
+    video_id: str = Field(description="Opaque technical id (not derived from the file name)")
     camera_view: str = Field(description="Declared by the user; 'unknown' if not declared")
     duration_s: float | None
     average_fps: float | None
@@ -68,11 +70,9 @@ class VideoInfo(StrictModel):
 
 class SessionMetadata(StrictModel):
     analysis_id: str
-    title: str
     mode: str
     created_at: datetime
     stroke_filter: str
-    focus: str | None
     video_relation: str
     videos: list[VideoInfo]
     recording_conditions: dict[str, str | None] = Field(
@@ -263,17 +263,31 @@ class ImageRef(StrictModel):
     width: int
     height: int
 
+    @field_validator("path")
+    @classmethod
+    def _safe_image_path(cls, v: str) -> str:
+        check_pack_path(v)
+        if not v.startswith(f"{EVIDENCE_DIR}/"):
+            raise ValueError(f"images must be inside '{EVIDENCE_DIR}/'")
+        return v
+
 
 class PackFile(StrictModel):
     path: str
-    sha256: str
-    bytes: int
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    bytes: int = Field(ge=0)
+
+    @field_validator("path")
+    @classmethod
+    def _safe_path(cls, v: str) -> str:
+        return check_pack_path(v)
 
 
 class MotivatingIssue(StrictModel):
     """The session-level issue that led the user to request a single-stroke analysis."""
 
     source_ai_analysis_id: str
+    source_import_id: str | None = None
     issue_id: str
     name: str
     description: str
@@ -288,7 +302,7 @@ class SingleStrokeTarget(StrictModel):
 
 
 class Manifest(StrictModel):
-    pack_schema_version: Literal["1.0"] = "1.0"
+    pack_schema_version: Literal["1.0", "1.1"] = "1.1"
     pack_id: str
     kind: PackKind
     analysis_id: str
@@ -296,10 +310,48 @@ class Manifest(StrictModel):
     generator: str
     instructions_version: str = INSTRUCTIONS_VERSION
     result_schema_version: str
-    result_file: str
+    result_file: str = Field(description=f"Always '{RESULT_FILENAME}'")
     language: str
     data_status: dict[str, DataStatus]
     images: list[ImageRef]
     files: list[PackFile] = Field(description="Integrity list: every file except manifest")
     target: SingleStrokeTarget | None = None
-    privacy: str = "Contains no video, no full pose sequence, no credentials and no absolute paths."
+    privacy: str = (
+        "Contains no video, no full pose sequence, no credentials, no absolute paths and no "
+        "free text typed by the user (title, focus, original file name)."
+    )
+
+    @field_validator("result_file")
+    @classmethod
+    def _fixed_result_file(cls, v: str) -> str:
+        if v != RESULT_FILENAME:
+            raise ValueError(f"result_file must be '{RESULT_FILENAME}'")
+        return v
+
+
+# Files every pack of a kind must list in ``manifest.files`` (besides its evidence images).
+REQUIRED_FILES: dict[PackKind, frozenset[str]] = {
+    PackKind.SESSION: frozenset(
+        {
+            SESSION_METADATA,
+            DATA_QUALITY,
+            STROKES,
+            MEASUREMENTS,
+            AGGREGATES,
+            ISSUE_CANDIDATES,
+            INSTRUCTIONS,
+            RESULT_SCHEMA,
+        }
+    ),
+    PackKind.SINGLE_STROKE: frozenset(
+        {
+            SESSION_METADATA,
+            DATA_QUALITY,
+            STROKES,
+            MEASUREMENTS,
+            TIMESERIES,
+            INSTRUCTIONS,
+            RESULT_SCHEMA,
+        }
+    ),
+}

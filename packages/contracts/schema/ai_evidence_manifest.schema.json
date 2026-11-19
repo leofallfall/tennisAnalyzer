@@ -105,6 +105,18 @@
         "source_ai_analysis_id": {
           "title": "Source Ai Analysis Id",
           "type": "string"
+        },
+        "source_import_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Import Id"
         }
       },
       "required": [
@@ -120,6 +132,7 @@
       "additionalProperties": false,
       "properties": {
         "bytes": {
+          "minimum": 0,
           "title": "Bytes",
           "type": "integer"
         },
@@ -128,6 +141,7 @@
           "type": "string"
         },
         "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
           "title": "Sha256",
           "type": "string"
         }
@@ -255,7 +269,7 @@
       "type": "array"
     },
     "instructions_version": {
-      "default": "ai-instructions/1.0",
+      "default": "ai-instructions/1.1",
       "title": "Instructions Version",
       "type": "string"
     },
@@ -271,17 +285,21 @@
       "type": "string"
     },
     "pack_schema_version": {
-      "const": "1.0",
-      "default": "1.0",
+      "default": "1.1",
+      "enum": [
+        "1.0",
+        "1.1"
+      ],
       "title": "Pack Schema Version",
       "type": "string"
     },
     "privacy": {
-      "default": "Contains no video, no full pose sequence, no credentials and no absolute paths.",
+      "default": "Contains no video, no full pose sequence, no credentials, no absolute paths and no free text typed by the user (title, focus, original file name).",
       "title": "Privacy",
       "type": "string"
     },
     "result_file": {
+      "description": "Always 'analysis_result.json'",
       "title": "Result File",
       "type": "string"
     },

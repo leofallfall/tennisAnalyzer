@@ -7,6 +7,7 @@ Nothing here writes files.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Iterator
@@ -16,7 +17,6 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from tennis_api.ai import pack as pk
-from tennis_api.ai.builder import sha256_file
 from tennis_api.ai.result import (
     RESULT_FILENAME,
     WHOLE_INTERVAL,
@@ -26,6 +26,7 @@ from tennis_api.ai.result import (
     IssueStrokeType,
     ResultKind,
 )
+from tennis_api.ai.safe_files import PackFileError, read_pack_file, scan_pack_tree
 from tennis_cv.common import StrictModel
 from tennis_cv.strokes.base import StrokeType
 
@@ -45,6 +46,7 @@ class ValidationOutcome:
     result: AnalysisResult | None = None
     errors: list[ValidationProblem] = field(default_factory=list)
     warnings: list[ValidationProblem] = field(default_factory=list)
+    result_sha256: str | None = None
 
     @property
     def ok(self) -> bool:
@@ -52,6 +54,27 @@ class ValidationOutcome:
 
     def error(self, code: str, message: str, location: str | None = None) -> None:
         self.errors.append(ValidationProblem(code=code, message=message, location=location))
+
+
+@dataclass(frozen=True)
+class PackAnchor:
+    """What the database recorded when the pack was created (C2).
+
+    The pack folder is writable by the analyst (Claude Code), so the expected
+    ``manifest.json`` hash and the pack identity come from here, never from the folder.
+    """
+
+    pack_id: str
+    analysis_id: str
+    kind: pk.PackKind
+    manifest_sha256: str
+
+
+@dataclass(frozen=True)
+class VerifiedManifest:
+    directory: Path
+    manifest: pk.Manifest
+    manifest_sha256: str
 
 
 @dataclass(frozen=True)
@@ -64,78 +87,211 @@ class LoadedPack:
     timeseries: pk.StrokeTimeseries | None
 
 
+LEGACY_MESSAGE = (
+    "This Evidence Pack was created before integrity protection and cannot be verified. "
+    "Prepare a new AI analysis to get a protected pack."
+)
+
+
 # ------------------------------------------------------------------------ pack
 
 
-def check_pack_integrity(pack_dir: Path, outcome: ValidationOutcome) -> pk.Manifest | None:
-    manifest_path = pack_dir / pk.MANIFEST
-    if not manifest_path.is_file():
-        outcome.error("pack_manifest_missing", "manifest.json is missing", pk.MANIFEST)
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def read_anchored_manifest(
+    pack_dir: Path, anchor: PackAnchor, outcome: ValidationOutcome
+) -> VerifiedManifest | None:
+    """Read ``manifest.json`` and check it against the hash and identity stored in the DB."""
+    try:
+        raw = read_pack_file(pack_dir, pk.MANIFEST)
+    except PackFileError as exc:
+        code = (
+            "pack_manifest_missing"
+            if exc.code in ("pack_file_missing", "pack_missing")
+            else (exc.code)
+        )
+        outcome.error(code, f"manifest.json could not be read: {exc.message}", pk.MANIFEST)
+        return None
+    digest = _sha256(raw)
+    if digest != anchor.manifest_sha256:
+        outcome.error(
+            "pack_manifest_modified",
+            "manifest.json was modified after the pack was created (its hash does not match "
+            "the one recorded by the app). Prepare a new AI analysis.",
+            pk.MANIFEST,
+        )
         return None
     try:
-        manifest = pk.Manifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
-    except (ValidationError, ValueError) as exc:
-        outcome.error("pack_manifest_invalid", f"manifest.json is invalid: {exc}", pk.MANIFEST)
+        manifest = pk.Manifest.model_validate_json(raw)
+    except (ValidationError, ValueError):
+        outcome.error("pack_manifest_invalid", "manifest.json is invalid", pk.MANIFEST)
         return None
-    listed = set()
-    for f in manifest.files:
-        listed.add(f.path)
-        path = pack_dir / f.path
-        if not path.is_file():
-            outcome.error("pack_file_missing", f"Evidence file is missing: {f.path}", f.path)
-        elif sha256_file(path) != f.sha256:
+    for field_name, expected, actual in (
+        ("pack_id", anchor.pack_id, manifest.pack_id),
+        ("analysis_id", anchor.analysis_id, manifest.analysis_id),
+        ("kind", anchor.kind.value, manifest.kind.value),
+        ("folder", anchor.pack_id, pack_dir.name),
+    ):
+        if expected != actual:
             outcome.error(
-                "pack_file_modified",
-                f"Evidence file was modified after the pack was created: {f.path}",
-                f.path,
+                "pack_identity_mismatch",
+                f"The pack's {field_name} does not match the AI analysis it belongs to",
+                pk.MANIFEST,
             )
+    if outcome.errors:
+        return None
+    return VerifiedManifest(directory=pack_dir, manifest=manifest, manifest_sha256=digest)
+
+
+def check_pack_integrity(
+    pack_dir: Path,
+    outcome: ValidationOutcome,
+    anchor: PackAnchor | None,
+    *,
+    require_anchor: bool = True,
+) -> tuple[pk.Manifest, dict[str, bytes]] | None:
+    """Verify the whole pack and return its manifest plus the verified file contents.
+
+    1. ``manifest.json`` must match the hash recorded in the database (``anchor``).
+       Without an anchor the pack is legacy: an error unless ``require_anchor`` is false
+       (only the CLI does that, for packs it cannot find in the database).
+    2. Every path is safe, every required file for the pack kind is listed, every listed
+       file matches its hash, there are no symlinks and no files the app did not create.
+
+    The returned bytes are the ones that were hashed: callers parse them instead of
+    reopening the files.
+    """
+    if anchor is None:
+        if require_anchor:
+            outcome.error("pack_legacy_unanchored", LEGACY_MESSAGE, pk.MANIFEST)
+            return None
+        try:
+            raw = read_pack_file(pack_dir, pk.MANIFEST)
+            manifest = pk.Manifest.model_validate_json(raw)
+        except PackFileError as exc:
+            outcome.error("pack_manifest_missing", f"manifest.json: {exc.message}", pk.MANIFEST)
+            return None
+        except (ValidationError, ValueError):
+            outcome.error("pack_manifest_invalid", "manifest.json is invalid", pk.MANIFEST)
+            return None
+    else:
+        verified = read_anchored_manifest(pack_dir, anchor, outcome)
+        if verified is None:
+            return None
+        manifest = verified.manifest
+
+    listed: dict[str, pk.PackFile] = {}
+    for f in manifest.files:
+        if f.path in listed or f.path in (pk.MANIFEST, RESULT_FILENAME):
+            outcome.error("pack_file_list_invalid", f"Invalid integrity list entry: {f.path}")
+        listed[f.path] = f
+    image_paths = {img.path for img in manifest.images}
+    for missing in sorted(pk.REQUIRED_FILES[manifest.kind] - set(listed)):
+        outcome.error(
+            "pack_required_file_missing",
+            f"Required file is not in the integrity list: {missing}",
+            missing,
+        )
+    for path in sorted(set(listed) - pk.REQUIRED_FILES[manifest.kind] - image_paths):
+        outcome.error("pack_file_list_invalid", f"Unexpected entry in the integrity list: {path}")
     for img in manifest.images:
         if img.path not in listed:
             outcome.error("pack_image_unlisted", f"Image not in integrity list: {img.path}")
-    allowed = listed | {pk.MANIFEST, manifest.result_file}
-    for path in sorted(pack_dir.rglob("*")):
-        rel = path.relative_to(pack_dir).as_posix()
-        if path.is_file() and rel not in allowed:
-            outcome.warnings.append(
-                ValidationProblem(
-                    code="pack_unexpected_file",
-                    message=f"File not created by the app: {rel} (ignored)",
-                    location=rel,
-                )
+
+    contents: dict[str, bytes] = {}
+    for path, f in listed.items():
+        try:
+            data = read_pack_file(pack_dir, path)
+        except PackFileError as exc:
+            outcome.error(exc.code, f"Evidence file {path}: {exc.message}", path)
+            continue
+        if _sha256(data) != f.sha256:
+            outcome.error(
+                "pack_file_modified",
+                f"Evidence file was modified after the pack was created: {path}",
+                path,
             )
-    return manifest
-
-
-def load_pack(pack_dir: Path, outcome: ValidationOutcome) -> LoadedPack | None:
-    manifest = check_pack_integrity(pack_dir, outcome)
-    if manifest is None or outcome.errors:
-        return None
-
-    def read(name: str) -> str:
-        return (pack_dir / name).read_text(encoding="utf-8")
+            continue
+        contents[path] = data
 
     try:
+        files, links, other = scan_pack_tree(pack_dir)
+    except OSError:
+        outcome.error("pack_missing", "The Evidence Pack folder could not be listed")
+        return None
+    for rel in links:
+        outcome.error("pack_symlink", f"Symbolic links are not allowed in a pack: {rel}", rel)
+    for rel in other:
+        outcome.error("pack_not_regular_file", f"Not a regular file: {rel}", rel)
+    for rel in sorted(files - set(listed) - {pk.MANIFEST, RESULT_FILENAME}):
+        outcome.error(
+            "pack_unexpected_file",
+            f"File not created by the app: {rel}. Only {RESULT_FILENAME} may be added; "
+            "remove this file and import again.",
+            rel,
+        )
+    if outcome.errors:
+        return None
+    return manifest, contents
+
+
+def load_pack(
+    pack_dir: Path,
+    outcome: ValidationOutcome,
+    anchor: PackAnchor | None,
+    *,
+    require_anchor: bool = True,
+) -> LoadedPack | None:
+    checked = check_pack_integrity(pack_dir, outcome, anchor, require_anchor=require_anchor)
+    if checked is None:
+        return None
+    manifest, contents = checked
+    try:
         aggregates = (
-            pk.Aggregates.model_validate_json(read(pk.AGGREGATES))
-            if (pack_dir / pk.AGGREGATES).is_file()
+            pk.Aggregates.model_validate_json(contents[pk.AGGREGATES])
+            if pk.AGGREGATES in contents
             else None
         )
         timeseries = (
-            pk.StrokeTimeseries.model_validate_json(read(pk.TIMESERIES))
-            if (pack_dir / pk.TIMESERIES).is_file()
+            pk.StrokeTimeseries.model_validate_json(contents[pk.TIMESERIES])
+            if pk.TIMESERIES in contents
             else None
         )
         return LoadedPack(
             directory=pack_dir,
             manifest=manifest,
-            strokes=pk.StrokesFile.model_validate_json(read(pk.STROKES)),
-            measurements=pk.MeasurementsFile.model_validate_json(read(pk.MEASUREMENTS)),
+            strokes=pk.StrokesFile.model_validate_json(contents[pk.STROKES]),
+            measurements=pk.MeasurementsFile.model_validate_json(contents[pk.MEASUREMENTS]),
             aggregates=aggregates,
             timeseries=timeseries,
         )
-    except (ValidationError, ValueError, OSError) as exc:
-        outcome.error("pack_data_invalid", f"Evidence Pack data could not be read: {exc}")
+    except (ValidationError, ValueError, KeyError):
+        outcome.error("pack_data_invalid", "Evidence Pack data could not be read")
         return None
+
+
+def read_verified_image(pack_dir: Path, anchor: PackAnchor, image_id: str) -> bytes | None:
+    """Bytes of one evidence image, or ``None`` if it cannot be served safely.
+
+    The manifest is checked against the database hash, the image path is validated and
+    opened without following links, and the bytes must match the manifest hash.
+    """
+    outcome = ValidationOutcome()
+    verified = read_anchored_manifest(pack_dir, anchor, outcome)
+    if verified is None:
+        return None
+    m = verified.manifest
+    img = next((i for i in m.images if i.id == image_id), None)
+    entry = next((f for f in m.files if img is not None and f.path == img.path), None)
+    if img is None or entry is None:
+        return None
+    try:
+        data = read_pack_file(pack_dir, img.path)
+    except PackFileError:
+        return None
+    return data if _sha256(data) == entry.sha256 else None
 
 
 # ---------------------------------------------------------------------- parsing
@@ -369,35 +525,64 @@ def cross_check(result: AnalysisResult, pack: LoadedPack, outcome: ValidationOut
 # ------------------------------------------------------------------------ entry
 
 
-def validate_result_text(raw: str, pack_dir: Path) -> ValidationOutcome:
+def validate_result_text(
+    raw: str,
+    pack_dir: Path,
+    anchor: PackAnchor | None = None,
+    *,
+    require_anchor: bool = True,
+) -> ValidationOutcome:
     outcome = ValidationOutcome()
-    pack = load_pack(pack_dir, outcome)
+    pack = load_pack(pack_dir, outcome, anchor, require_anchor=require_anchor)
     result = parse_result(raw, outcome)
     if pack is not None and result is not None:
         cross_check(result, pack, outcome)
     outcome.result = result
+    outcome.result_sha256 = _sha256(raw.encode("utf-8"))
     return outcome
 
 
-def validate_result_file(pack_dir: Path) -> ValidationOutcome:
-    path = pack_dir / RESULT_FILENAME
-    if not path.is_file():
+def validate_result_file(
+    pack_dir: Path,
+    anchor: PackAnchor | None = None,
+    *,
+    require_anchor: bool = True,
+) -> ValidationOutcome:
+    try:
+        raw = read_pack_file(pack_dir, RESULT_FILENAME)
+    except PackFileError as exc:
         outcome = ValidationOutcome()
-        check_pack_integrity(pack_dir, outcome)
-        outcome.error(
-            "result_missing",
-            f"{RESULT_FILENAME} was not found in the pack folder. Run the analysis first.",
-            RESULT_FILENAME,
-        )
+        check_pack_integrity(pack_dir, outcome, anchor, require_anchor=require_anchor)
+        if exc.code in ("pack_file_missing", "pack_missing"):
+            outcome.error(
+                "result_missing",
+                f"{RESULT_FILENAME} was not found in the pack folder. Run the analysis first.",
+                RESULT_FILENAME,
+            )
+        else:
+            outcome.error(exc.code, f"{RESULT_FILENAME}: {exc.message}", RESULT_FILENAME)
         return outcome
-    return validate_result_text(path.read_text(encoding="utf-8"), pack_dir)
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        outcome = ValidationOutcome()
+        check_pack_integrity(pack_dir, outcome, anchor, require_anchor=require_anchor)
+        outcome.error("invalid_json", f"{RESULT_FILENAME} is not UTF-8 text", RESULT_FILENAME)
+        return outcome
+    return validate_result_text(text, pack_dir, anchor, require_anchor=require_anchor)
 
 
 __all__ = [
+    "LEGACY_MESSAGE",
+    "LoadedPack",
+    "PackAnchor",
     "ResultKind",
     "ValidationOutcome",
     "ValidationProblem",
     "check_pack_integrity",
+    "load_pack",
+    "read_anchored_manifest",
+    "read_verified_image",
     "validate_result_file",
     "validate_result_text",
 ]

@@ -393,6 +393,25 @@ export interface AiEvidenceImage {
   url: string
 }
 
+/** verified: manifest matches the hash recorded at creation. legacy: created before
+ * integrity protection (cannot be imported; prepare a new pack). */
+export type AiPackStatus = 'verified' | 'modified' | 'missing' | 'legacy'
+
+/** One imported version of an AI result (append-only history). */
+export interface AiImport {
+  id: string
+  version: number
+  imported_at: string
+  origin: 'import' | 'legacy_migration'
+  adapter: string
+  /** Self-reported by the analyst; not verified by the app. */
+  model: string | null
+  pack_id: string
+  result_sha256: string | null
+  result: AiAnalysisResult
+  validation_warnings: AiValidationProblem[]
+}
+
 export interface AiAnalysis {
   id: string
   analysis_id: string
@@ -401,14 +420,20 @@ export interface AiAnalysis {
   pack_path: string
   adapter: string
   status: AiAnalysisState
+  pack_status: AiPackStatus
   target: {
     video_id: string
     stroke_id: string
     source: 'detected' | 'user_interval'
     interval: TimeInterval
-    motivating_issue: { issue_id: string; name: string } | null
+    motivating_issue: {
+      issue_id: string
+      name: string
+      source_import_id?: string | null
+    } | null
   } | null
   data_status: Record<string, 'available' | 'not_implemented' | 'empty'>
+  /** Latest imported version (same as imports[imports.length - 1].result). */
   result: AiAnalysisResult | null
   model: string | null
   validation_errors: AiValidationProblem[]
@@ -416,6 +441,9 @@ export interface AiAnalysis {
   import_attempts: number
   created_at: string
   imported_at: string | null
+  last_rejected_at: string | null
+  /** Every imported version, oldest first. */
+  imports: AiImport[]
   handoff: AiHandoff | null
   images: AiEvidenceImage[]
 }
@@ -427,5 +455,6 @@ export interface SingleStrokeAiRequest {
   end_s?: number
   declared_stroke_type?: 'forehand' | 'backhand' | 'unknown'
   source_ai_analysis_id?: string
+  source_import_id?: string
   issue_id?: string
 }

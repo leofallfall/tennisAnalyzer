@@ -22,11 +22,12 @@ from tennis_api.ai.builder import (
     StrokeData,
     build_session_pack,
     build_single_stroke_pack,
+    manifest_sha256,
 )
 from tennis_api.ai.client import AnthropicAPIAdapter, ClaudeCodeAdapter, get_ai_client
 from tennis_api.ai.result import RESULT_FILENAME, AnalysisResult
 from tennis_api.ai.sources import session_metadata, video_sources
-from tennis_api.ai.validation import validate_result_file, validate_result_text
+from tennis_api.ai.validation import PackAnchor, validate_result_file, validate_result_text
 from tennis_api.config import Settings
 from tennis_api.models import AiAnalysis, Analysis
 from tennis_cv.biomechanics.measurement import Measurement
@@ -142,10 +143,38 @@ def build_with_strokes(p: Processed) -> Path:
     for a in p.analysis():
         videos = video_sources(a, p.settings)
         meta = session_metadata(a).model_copy(update={"videos": [v.info for v in videos]})
-        _, pack_dir = build_session_pack(
+        m, pack_dir = build_session_pack(
             p.settings.ai_dir / a.id, meta, videos, synthetic_stroke_data(p.video_id)
         )
+    # What the app records in the database when it creates the pack (C2 anchor).
+    ANCHORS[pack_dir] = PackAnchor(
+        pack_id=m.pack_id,
+        analysis_id=m.analysis_id,
+        kind=m.kind,
+        manifest_sha256=manifest_sha256(m),
+    )
     return pack_dir
+
+
+ANCHORS: dict[Path, PackAnchor] = {}
+
+
+def anchor(pack_dir: Path) -> PackAnchor:
+    return ANCHORS[pack_dir]
+
+
+def api_pack(p: Processed, body: dict[str, Any]) -> Path:
+    """Pack folder of an AI analysis created through the API, with its DB anchor."""
+    with p.client.app.state.db.session() as s:  # type: ignore[attr-defined]
+        row = s.get(AiAnalysis, body["id"])
+        assert row is not None and row.manifest_sha256
+        ANCHORS[p.settings.storage_dir / row.pack_dir] = PackAnchor(
+            pack_id=row.pack_id,
+            analysis_id=row.analysis_id,
+            kind=pk.PackKind(row.kind),
+            manifest_sha256=row.manifest_sha256,
+        )
+        return p.settings.storage_dir / row.pack_dir
 
 
 def register(p: Processed, pack_dir: Path) -> str:
@@ -159,6 +188,7 @@ def register(p: Processed, pack_dir: Path) -> str:
             pack_dir=pack_dir.relative_to(p.settings.storage_dir).as_posix(),
             adapter="claude_code",
             data_status={k: v.value for k, v in m.data_status.items()},
+            manifest_sha256=anchor(pack_dir).manifest_sha256,
         )
         s.add(row)
         s.commit()
@@ -256,7 +286,7 @@ def valid_session_result(pack_dir: Path) -> dict[str, Any]:
 
 def codes(raw: dict[str, Any] | str, pack_dir: Path) -> set[str]:
     text = raw if isinstance(raw, str) else json.dumps(raw)
-    return {e.code for e in validate_result_text(text, pack_dir).errors}
+    return {e.code for e in validate_result_text(text, pack_dir, anchor(pack_dir)).errors}
 
 
 # ------------------------------------------------------------- Evidence Pack
@@ -267,7 +297,7 @@ def test_session_pack_without_strokes_declares_missing_capabilities(processed: P
     r = processed.client.post(f"/api/analyses/{processed.analysis_id}/ai/session")
     assert r.status_code == 201, r.json()
     body = r.json()
-    pack_dir = processed.settings.storage_dir / "ai" / processed.analysis_id / body["pack_id"]
+    pack_dir = api_pack(processed, body)
     m = manifest(pack_dir)
     assert m.data_status["strokes"] is pk.DataStatus.NOT_IMPLEMENTED
     assert m.data_status["measurements"] is pk.DataStatus.NOT_IMPLEMENTED
@@ -355,7 +385,7 @@ def test_single_stroke_pack_from_interval_has_timeseries(processed: Processed) -
     assert r.status_code == 201, r.json()
     body = r.json()
     assert body["kind"] == "single_stroke" and body["target"]["source"] == "user_interval"
-    pack_dir = processed.settings.storage_dir / "ai" / processed.analysis_id / body["pack_id"]
+    pack_dir = api_pack(processed, body)
     ts = pk.StrokeTimeseries.model_validate_json((pack_dir / pk.TIMESERIES).read_text())
     assert len(ts.samples) == 31  # frames 15..45 at 30 fps
     right = [s.angles["elbow_angle_projected:right"].value_deg for s in ts.samples]
@@ -388,7 +418,9 @@ def test_single_stroke_interval_limits(processed: Processed) -> None:
 
 def test_valid_result_passes_validation(processed: Processed) -> None:
     pack_dir = build_with_strokes(processed)
-    outcome = validate_result_text(json.dumps(valid_session_result(pack_dir)), pack_dir)
+    outcome = validate_result_text(
+        json.dumps(valid_session_result(pack_dir)), pack_dir, anchor(pack_dir)
+    )
     assert outcome.ok, outcome.errors
     assert isinstance(outcome.result, AnalysisResult)
 
@@ -424,14 +456,14 @@ def test_invalid_results_are_rejected(processed: Processed, mutate: Any, code: s
 
 def test_malformed_json_is_reported(processed: Processed) -> None:
     pack_dir = build_with_strokes(processed)
-    outcome = validate_result_text('{"kind": "session",', pack_dir)
+    outcome = validate_result_text('{"kind": "session",', pack_dir, anchor(pack_dir))
     assert not outcome.ok and outcome.errors[0].code == "invalid_json"
     assert "line 1" in outcome.errors[0].message
 
 
 def test_no_strokes_means_no_issues(processed: Processed) -> None:
     r = processed.client.post(f"/api/analyses/{processed.analysis_id}/ai/session").json()
-    pack_dir = processed.settings.storage_dir / "ai" / processed.analysis_id / r["pack_id"]
+    pack_dir = api_pack(processed, r)
     result = valid_session_result(build_with_strokes(processed))  # borrow a full result
     m = manifest(pack_dir)
     result.update(session_id=m.analysis_id, pack_id=m.pack_id)
@@ -465,13 +497,15 @@ def test_missing_or_modified_evidence_blocks_import(processed: Processed) -> Non
     raw2 = json.dumps(valid_session_result(pack_dir2))
     (pack_dir2 / pk.STROKES).write_text('{"status": "available", "strokes": []}')
     assert "pack_file_modified" in codes(raw2, pack_dir2)
-    outcome = validate_result_file(pack_dir2)
+    outcome = validate_result_file(pack_dir2, anchor(pack_dir2))
     assert "result_missing" in {e.code for e in outcome.errors}
 
 
 def test_session_and_single_stroke_share_the_result_contract(processed: Processed) -> None:
     session_pack = build_with_strokes(processed)
-    assert validate_result_text(json.dumps(valid_session_result(session_pack)), session_pack).ok
+    assert validate_result_text(
+        json.dumps(valid_session_result(session_pack)), session_pack, anchor(session_pack)
+    ).ok
     # A stroke from the session pack can be analysed on its own without reprocessing.
     register(processed, session_pack)
     r = processed.client.post(
@@ -479,7 +513,7 @@ def test_session_and_single_stroke_share_the_result_contract(processed: Processe
     )
     assert r.status_code == 201, r.json()
     body = r.json()
-    pack_dir = processed.settings.storage_dir / "ai" / processed.analysis_id / body["pack_id"]
+    pack_dir = api_pack(processed, body)
     m = manifest(pack_dir)
     assert m.target is not None and m.target.source == "detected"
     ts = pk.StrokeTimeseries.model_validate_json((pack_dir / pk.TIMESERIES).read_text())
@@ -534,7 +568,7 @@ def test_import_flow_validates_and_keeps_cv_results(processed: Processed) -> Non
     results_before = c.get(f"/api/analyses/{aid}").json()["results"]
     body = c.post(f"/api/analyses/{aid}/ai/session").json()
     ai_id = body["id"]
-    pack_dir = processed.settings.storage_dir / "ai" / aid / body["pack_id"]
+    pack_dir = api_pack(processed, body)
 
     missing = c.post(f"/api/ai-analyses/{ai_id}/import")
     assert missing.status_code == 422
@@ -615,7 +649,7 @@ def test_single_stroke_unknown_stroke_and_motivating_issue(processed: Processed)
         json={"stroke_id": "stk_2", "source_ai_analysis_id": ai_id, "issue_id": "iss_1"},
     )
     assert deep.status_code == 201, deep.json()
-    deep_dir = processed.settings.storage_dir / "ai" / aid / deep.json()["pack_id"]
+    deep_dir = api_pack(processed, deep.json())
     target = manifest(deep_dir).target
     assert target is not None and target.motivating_issue is not None
     assert target.motivating_issue.issue_id == "iss_1"
@@ -644,11 +678,13 @@ def test_anthropic_adapter_is_not_implemented(
 
 
 def test_validate_cli(processed: Processed) -> None:
+    import os
     import subprocess
     import sys
 
     pack_dir = build_with_strokes(processed)
     script = Path(__file__).resolve().parents[2] / "scripts" / "ai_pack.py"
+    env = {**os.environ, "TPA_STORAGE_DIR": str(processed.settings.storage_dir)}
 
     def run() -> subprocess.CompletedProcess[str]:
         return subprocess.run(
@@ -656,10 +692,35 @@ def test_validate_cli(processed: Processed) -> None:
             capture_output=True,
             text=True,
             check=False,
+            env=env,
         )
 
+    # Not registered in the database: the CLI says the manifest hash was not checked.
+    unregistered = run()
+    assert unregistered.returncode == 1 and "result_missing" in unregistered.stdout
+    assert "pack_not_registered" in unregistered.stdout
+    register(processed, pack_dir)
     missing = run()
     assert missing.returncode == 1 and "result_missing" in missing.stdout
+    assert "pack_not_registered" not in missing.stdout
     (pack_dir / RESULT_FILENAME).write_text(json.dumps(valid_session_result(pack_dir)))
     ok = run()
     assert ok.returncode == 0 and ok.stdout.startswith("OK"), ok.stdout + ok.stderr
+    # The CLI uses the database anchor: a re-hashed manifest is caught here too.
+    _tamper_strokes_and_rehash(pack_dir)
+    forged = run()
+    assert forged.returncode == 1 and "pack_manifest_modified" in forged.stdout
+
+
+def _tamper_strokes_and_rehash(pack_dir: Path) -> None:
+    """The audit's C2 attack: change strokes.json and update its hash in the manifest."""
+    strokes = json.loads((pack_dir / pk.STROKES).read_text())
+    # Silent change: a forged classification confidence, invisible to the cross-checks.
+    strokes["strokes"][0]["type_confidence"] = 0.99
+    (pack_dir / pk.STROKES).write_text(json.dumps(strokes))
+    m = json.loads((pack_dir / pk.MANIFEST).read_text())
+    for f in m["files"]:
+        if f["path"] == pk.STROKES:
+            f["sha256"] = hashlib.sha256((pack_dir / pk.STROKES).read_bytes()).hexdigest()
+            f["bytes"] = (pack_dir / pk.STROKES).stat().st_size
+    (pack_dir / pk.MANIFEST).write_text(json.dumps(m, indent=2))

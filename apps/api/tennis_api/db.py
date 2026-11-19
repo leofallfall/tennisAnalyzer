@@ -36,6 +36,13 @@ class Database:
 
         Base.metadata.create_all(self.engine)
 
+    def migrate(self) -> list[str]:
+        """Create missing tables, then apply in-place migrations (API startup only)."""
+        from tennis_api.migrations import run_migrations
+
+        self.create_all()
+        return run_migrations(self.engine)
+
     def session(self) -> Session:
         return self.session_factory()
 

@@ -1,4 +1,4 @@
-import type { AiAnalysis, Analysis } from '@tpa/contracts'
+import type { AiAnalysis, AiAnalysisResult, AiImport, Analysis } from '@tpa/contracts'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -35,6 +35,7 @@ const awaiting: AiAnalysis = {
   pack_path: 'storage/ai/a1/session-1',
   adapter: 'claude_code',
   status: 'awaiting_result',
+  pack_status: 'verified',
   target: null,
   data_status: { strokes: 'not_implemented', measurements: 'not_implemented' },
   result: null,
@@ -44,6 +45,8 @@ const awaiting: AiAnalysis = {
   import_attempts: 0,
   created_at: '2026-01-01T10:00:00Z',
   imported_at: null,
+  last_rejected_at: null,
+  imports: [],
   handoff: {
     adapter: 'claude_code',
     interactive: true,
@@ -55,55 +58,71 @@ const awaiting: AiAnalysis = {
   images: [],
 }
 
+const importedResult: AiAnalysisResult = {
+  schema_version: '1.0',
+  kind: 'session',
+  session_id: 'a1',
+  pack_id: 'session-1',
+  analysis_version: 'ai-instructions/1.0',
+  adapter: 'claude_code',
+  model: 'test-model',
+  generated_at: '2026-01-01T10:00:00Z',
+  language: 'it',
+  summary: 'Sintesi reale importata',
+  evaluated_strokes: { detected: 2, evaluable: 2, forehand: 2, backhand: 0, unknown: 0 },
+  by_stroke_type: [],
+  issues: [
+    {
+      id: 'iss_1',
+      priority: 1,
+      name: 'Braccio piegato',
+      description: 'desc',
+      stroke_type: 'forehand',
+      nature: 'uncertain',
+      occurrences: 1,
+      evaluable_strokes: 2,
+      percentage: 50,
+      relevance: 'medium',
+      confidence: 0.5,
+      stroke_ids: ['stk_2'],
+      timestamps_s: [0.9],
+      observations: ['Gomito 120.5°'],
+      evidence: [{ kind: 'measurement', ref: 'm_2' }],
+      biomechanical_explanation: 'Ipotesi',
+      alternative_explanations: [],
+      recommended_exercises: [],
+    },
+  ],
+  positive_executions: [],
+  recommendations: [],
+  limitations: ['Dati sintetici'],
+  confidence: 0.5,
+  insufficient_evidence: false,
+  target: null,
+  phases: [],
+}
+
+const firstImport: AiImport = {
+  id: 'imp1',
+  version: 1,
+  imported_at: '2026-01-01T11:00:00Z',
+  origin: 'import',
+  adapter: 'claude_code',
+  model: 'test-model',
+  pack_id: 'session-1',
+  result_sha256: 'a'.repeat(64),
+  result: importedResult,
+  validation_warnings: [],
+}
+
 const imported: AiAnalysis = {
   ...awaiting,
   id: 'ai2',
   status: 'imported',
   handoff: null,
   model: 'test-model',
-  result: {
-    schema_version: '1.0',
-    kind: 'session',
-    session_id: 'a1',
-    pack_id: 'session-1',
-    analysis_version: 'ai-instructions/1.0',
-    adapter: 'claude_code',
-    model: 'test-model',
-    generated_at: '2026-01-01T10:00:00Z',
-    language: 'it',
-    summary: 'Sintesi reale importata',
-    evaluated_strokes: { detected: 2, evaluable: 2, forehand: 2, backhand: 0, unknown: 0 },
-    by_stroke_type: [],
-    issues: [
-      {
-        id: 'iss_1',
-        priority: 1,
-        name: 'Braccio piegato',
-        description: 'desc',
-        stroke_type: 'forehand',
-        nature: 'uncertain',
-        occurrences: 1,
-        evaluable_strokes: 2,
-        percentage: 50,
-        relevance: 'medium',
-        confidence: 0.5,
-        stroke_ids: ['stk_2'],
-        timestamps_s: [0.9],
-        observations: ['Gomito 120.5°'],
-        evidence: [{ kind: 'measurement', ref: 'm_2' }],
-        biomechanical_explanation: 'Ipotesi',
-        alternative_explanations: [],
-        recommended_exercises: [],
-      },
-    ],
-    positive_executions: [],
-    recommendations: [],
-    limitations: ['Dati sintetici'],
-    confidence: 0.5,
-    insufficient_evidence: false,
-    target: null,
-    phases: [],
-  },
+  result: importedResult,
+  imports: [firstImport],
 }
 
 function renderPanel(a: Analysis = analysis) {
@@ -162,7 +181,47 @@ describe('AI analysis panel', () => {
     expect(JSON.parse(String(call![1]!.body))).toEqual({
       stroke_id: 'stk_2',
       source_ai_analysis_id: 'ai2',
+      source_import_id: 'imp1',
       issue_id: 'iss_1',
     })
+  })
+
+  it('keeps every imported version and shows them in order', async () => {
+    const v2: AiAnalysisResult = { ...importedResult, summary: 'Seconda versione', issues: [] }
+    const twoVersions: AiAnalysis = {
+      ...imported,
+      result: v2,
+      imports: [
+        firstImport,
+        { ...firstImport, id: 'imp2', version: 2, result: v2, model: 'other-model' },
+      ],
+      validation_errors: [{ code: 'invalid_json', message: 'Not valid JSON', location: null }],
+      last_rejected_at: '2026-01-01T12:00:00Z',
+    }
+    mockFetch({ '/api/analyses/a1/ai': [twoVersions] })
+    renderPanel()
+    expect(await screen.findByText('Seconda versione')).toBeInTheDocument()
+    const versions = screen.getAllByRole('button', { name: /^v\d/ })
+    expect(versions.map((b) => b.textContent)).toEqual([
+      expect.stringMatching(/^v1 · /),
+      expect.stringMatching(/^v2 \(latest\) · /),
+    ])
+    expect(screen.getByText(/other-model \(self-reported\)/)).toBeInTheDocument()
+    expect(screen.getByText(/last import attempt was rejected/)).toBeInTheDocument()
+    expect(screen.getByText(/Imported versions are unchanged/)).toBeInTheDocument()
+    await userEvent.click(versions[0]!)
+    expect(screen.getByText('Sintesi reale importata')).toBeInTheDocument()
+    expect(screen.queryByText('Seconda versione')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Import new version/ })).toBeInTheDocument()
+  })
+
+  it('explains that a legacy pack must be prepared again', async () => {
+    mockFetch({
+      '/api/analyses/a1/ai': [{ ...imported, pack_status: 'legacy', images: [] }],
+    })
+    renderPanel()
+    expect(await screen.findByText(/created before integrity protection/)).toBeInTheDocument()
+    expect(screen.getByText('Sintesi reale importata')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Import new version/ })).not.toBeInTheDocument()
   })
 })

@@ -18,8 +18,11 @@ Argomento ricevuto: `$ARGUMENTS`
 - Lavora **solo** dentro la cartella del pacchetto indicata. Se l'argomento manca, esegui
   `uv run python scripts/ai_pack.py list` e chiedi all'utente quale pacchetto usare.
 - **Leggi** solo i file del pacchetto. **Scrivi** solo `<pacchetto>/analysis_result.json`.
-- Non modificare: altri file del pacchetto (sono protetti da hash in `manifest.json`), il
-  codice, i documenti, il database, `storage/analyses/` (risultati CV), i video.
+- Non modificare: altri file del pacchetto (sono protetti da hash in `manifest.json`, e
+  l'hash del manifest è registrato nel database dell'app), il codice, i documenti, il
+  database, `storage/analyses/` (risultati CV), i video.
+- Non creare altri file, copie di lavoro o link simbolici nella cartella del pacchetto:
+  l'importazione li rifiuta.
 - Non caricare nulla su servizi esterni, non usare il web, non chiamare API.
 - L'unico comando da eseguire è la validazione (passo 11).
 

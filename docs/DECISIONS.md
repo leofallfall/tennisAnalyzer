@@ -99,3 +99,42 @@ without rewrites. The audit (docs/audit, step F 3.1) already planned an `AiClien
 **Consequences:**
 - Until stroke detection exists (M2), real packs carry no strokes, and validation forces "insufficient evidence" session results.
 - Single-stroke analysis works on user-selected intervals with 2D angle time series.
+
+### ADR-014 Evidence Pack integrity anchored in the database; append-only AI import history
+**Context:** The Personal AI Analysis audit (2026-11-18) proved two critical flaws.
+- C1: unchecked manifest paths let the image endpoint serve `/etc/hostname`.
+- C2: the only hashes lived inside the pack, so editing a file *and* its hash in
+  `manifest.json` imported a forged issue.
+
+It also found (I2) that a new import overwrote the previous one, and (I3) that the pack
+carried the analysis title, the free-text focus and the original file name.
+**Decision:**
+- All pack file access goes through `ai/safe_files.py`:
+  - paths are strict relative names;
+  - files are opened component by component with `O_NOFOLLOW`, so no symlink is followed;
+  - each file must be a regular file;
+  - bytes are read once, then hashed and parsed from the same buffer.
+- At creation the API stores the SHA-256 of `manifest.json` in `ai_analyses`; it is
+  computed from the in-memory manifest, never read back from disk.
+- On import, validation:
+  - checks the manifest against the stored hash, and the pack id, analysis id, kind and
+    folder against the DB row;
+  - requires the full file set for the pack kind;
+  - rejects symlinks and any unlisted file.
+- Packs created before this change (no stored hash) are **legacy**: they are not
+  imported, and the user prepares a new pack. Results already imported are kept.
+- Every valid import adds an `ai_analysis_imports` row (version n+1).
+  - An identical file is refused (409).
+  - Invalid attempts only update the latest-attempt fields.
+- Packs no longer include title, focus or original file names.
+- Schema changes are applied by a small additive migration runner (`tennis_api/migrations.py`) run by the API at startup.
+**Alternatives:**
+- An HMAC signature of the pack: it needs a secret key and adds nothing while the database already sits outside Claude Code's write scope.
+- Read-only file permissions: a deterrent only.
+- Alembic: a new dependency for two additive steps. Revisit for renames, drops or PostgreSQL.
+- Overwriting with a confirmation flag: it loses history.
+**Consequences:**
+- Any change to a pack after creation blocks its import, even a harmless one; the fix is to prepare a new pack.
+- The CLI `ai_pack.py validate` reads the anchor from the database when it can. If it cannot, it says the manifest hash was not checked.
+- Security still depends on the database not being writable by the analyst. Claude Code runs with the user's permissions, so this is protection against accidental or unreviewed changes, not against a deliberately malicious local process.
+

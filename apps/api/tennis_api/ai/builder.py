@@ -120,9 +120,27 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _write_json(path: Path, data: BaseModel | dict[str, object]) -> None:
+def _json_bytes(data: BaseModel | dict[str, object]) -> bytes:
     payload = data.model_dump(mode="json") if isinstance(data, BaseModel) else data
-    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return (json.dumps(payload, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def _write_json(path: Path, data: BaseModel | dict[str, object]) -> None:
+    path.write_bytes(_json_bytes(data))
+
+
+def manifest_bytes(manifest: pk.Manifest) -> bytes:
+    """Exact bytes written to ``manifest.json`` (deterministic for a given manifest)."""
+    return _json_bytes(manifest)
+
+
+def manifest_sha256(manifest: pk.Manifest) -> str:
+    """SHA-256 of ``manifest.json`` computed from the in-memory manifest.
+
+    The API stores it in the database when the pack is created (C2): the expected hash
+    never has to be read back from the pack folder, which the analyst can write to.
+    """
+    return hashlib.sha256(manifest_bytes(manifest)).hexdigest()
 
 
 def _new_pack_id(kind: pk.PackKind, now: datetime) -> str:
@@ -424,7 +442,7 @@ def _finalise(
                 )
             )
     manifest = pk.Manifest(images=images, files=files, **manifest_kwargs)
-    _write_json(tmp_dir / pk.MANIFEST, manifest)
+    (tmp_dir / pk.MANIFEST).write_bytes(manifest_bytes(manifest))
     tmp_dir.rename(final_dir)
     return manifest
 

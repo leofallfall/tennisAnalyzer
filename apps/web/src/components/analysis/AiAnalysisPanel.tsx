@@ -2,6 +2,7 @@ import type {
   AiAnalysis,
   AiAnalysisResult,
   AiEvidenceImage,
+  AiImport,
   AiIssue,
   Analysis,
   EvidenceRef,
@@ -77,11 +78,12 @@ export function AiAnalysisPanel({
       }),
     )
   }
-  const deepDive = (source: AiAnalysis, issue: AiIssue, strokeId: string) =>
+  const deepDive = (source: AiAnalysis, version: AiImport, issue: AiIssue, strokeId: string) =>
     run(`deep-${issue.id}`, () =>
       api.prepareSingleStrokeAi(analysis.id, {
         stroke_id: strokeId,
         source_ai_analysis_id: source.id,
+        source_import_id: version.id,
         issue_id: issue.id,
       }),
     )
@@ -147,7 +149,7 @@ export function AiAnalysisPanel({
             ai={ai}
             busy={busy}
             onImport={() => importResult(ai)}
-            onDeepDive={(issue, strokeId) => deepDive(ai, issue, strokeId)}
+            onDeepDive={(version, issue, strokeId) => deepDive(ai, version, issue, strokeId)}
           />
         ))}
       </CardContent>
@@ -159,6 +161,16 @@ function round3(n: number) {
   return Math.round(n * 1000) / 1000
 }
 
+const PACK_NOTICE: Record<Exclude<AiAnalysis['pack_status'], 'verified'>, string> = {
+  legacy:
+    'This Evidence Pack was created before integrity protection and cannot be imported. ' +
+    'Prepare a new AI analysis. Versions already imported stay visible below.',
+  modified:
+    'The Evidence Pack was modified after it was prepared (its manifest no longer matches ' +
+    'the hash recorded by the app). It cannot be imported: prepare a new AI analysis.',
+  missing: 'The Evidence Pack folder is missing. Prepare a new AI analysis.',
+}
+
 function AiAnalysisItem({
   ai,
   busy,
@@ -168,7 +180,7 @@ function AiAnalysisItem({
   ai: AiAnalysis
   busy: string | null
   onImport: () => void
-  onDeepDive: (issue: AiIssue, strokeId: string) => void
+  onDeepDive: (version: AiImport, issue: AiIssue, strokeId: string) => void
 }) {
   const variant = ai.status === 'imported' ? 'success' : ai.status === 'invalid' ? 'danger' : 'info'
   const title =
@@ -176,6 +188,7 @@ function AiAnalysisItem({
       ? 'Session analysis'
       : `Single stroke ${ai.target ? `${formatClock(ai.target.interval.start_s, 1)}–${formatClock(ai.target.interval.end_s, 1)}` : ''}`
   const notAvailable = Object.entries(ai.data_status).filter(([, v]) => v !== 'available')
+  const hasVersions = ai.imports.length > 0
   return (
     <section
       aria-label={title}
@@ -185,12 +198,23 @@ function AiAnalysisItem({
       <div className="flex flex-wrap items-center gap-2">
         <p className="font-medium">{title}</p>
         <Badge variant={variant}>{STATUS_LABEL[ai.status]}</Badge>
+        {hasVersions && (
+          <Badge>
+            {ai.imports.length} version{ai.imports.length === 1 ? '' : 's'}
+          </Badge>
+        )}
         {ai.target?.motivating_issue && (
           <Badge variant="primary">Issue: {ai.target.motivating_issue.name}</Badge>
         )}
-        <span className="text-xs text-muted-foreground">{formatDateTime(ai.created_at)}</span>
-        {ai.model && <span className="text-xs text-muted-foreground">· {ai.model}</span>}
+        <span className="text-xs text-muted-foreground">
+          Prepared {formatDateTime(ai.created_at)}
+        </span>
       </div>
+      {ai.pack_status !== 'verified' && (
+        <p role="status" className="rounded-md border border-warning/40 bg-warning/10 p-2 text-xs">
+          {PACK_NOTICE[ai.pack_status]}
+        </p>
+      )}
       {notAvailable.length > 0 && (
         <p className="text-xs text-muted-foreground">
           Not in this pack:{' '}
@@ -201,9 +225,9 @@ function AiAnalysisItem({
       {ai.validation_errors.length > 0 && (
         <div role="alert" className="rounded-md border border-danger/30 bg-danger/5 p-3 text-sm">
           <p className="font-medium text-danger">
-            The result was not imported ({ai.validation_errors.length} problem
-            {ai.validation_errors.length === 1 ? '' : 's'}). Fix analysis_result.json (or ask Claude
-            Code to fix it) and import again.
+            {hasVersions
+              ? `The last import attempt was rejected (${ai.validation_errors.length} problem${ai.validation_errors.length === 1 ? '' : 's'}). Imported versions are unchanged.`
+              : `The result was not imported (${ai.validation_errors.length} problem${ai.validation_errors.length === 1 ? '' : 's'}). Fix analysis_result.json (or ask Claude Code to fix it) and import again.`}
           </p>
           <ul className="mt-2 list-disc pl-5 text-xs">
             {ai.validation_errors.map((e, i) => (
@@ -215,8 +239,74 @@ function AiAnalysisItem({
           </ul>
         </div>
       )}
-      {ai.result && <AiResultView ai={ai} result={ai.result} busy={busy} onDeepDive={onDeepDive} />}
+      {hasVersions && (
+        <VersionHistory
+          ai={ai}
+          busy={busy}
+          onImport={onImport}
+          onDeepDive={onDeepDive}
+          key={ai.imports.length}
+        />
+      )}
     </section>
+  )
+}
+
+/** Imported versions, oldest first; the latest is selected by default. Never edited. */
+function VersionHistory({
+  ai,
+  busy,
+  onImport,
+  onDeepDive,
+}: {
+  ai: AiAnalysis
+  busy: string | null
+  onImport: () => void
+  onDeepDive: (version: AiImport, issue: AiIssue, strokeId: string) => void
+}) {
+  // Rendered only when there is at least one imported version.
+  const latest = ai.imports[ai.imports.length - 1]!
+  const [selectedId, setSelectedId] = useState(latest.id)
+  const selected = ai.imports.find((v) => v.id === selectedId) ?? latest
+  return (
+    <div className="flex flex-col gap-2">
+      <div
+        className="flex flex-wrap items-center gap-2"
+        role="group"
+        aria-label="Imported versions"
+      >
+        {ai.imports.map((v) => (
+          <Button
+            key={v.id}
+            size="sm"
+            variant={v.id === selected.id ? 'default' : 'outline'}
+            aria-pressed={v.id === selected.id}
+            onClick={() => setSelectedId(v.id)}
+          >
+            v{v.version}
+            {v.id === latest.id ? ' (latest)' : ''} · {formatDateTime(v.imported_at)}
+          </Button>
+        ))}
+        {ai.pack_status === 'verified' && (
+          <Button size="sm" variant="ghost" onClick={onImport} disabled={busy !== null}>
+            {busy === `import-${ai.id}` ? <Loader2 className="animate-spin" /> : <Download />}
+            Import new version
+          </Button>
+        )}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        Version {selected.version} of {ai.imports.length} · imported{' '}
+        {formatDateTime(selected.imported_at)}
+        {selected.model && ` · model ${selected.model} (self-reported)`}
+        {selected.origin === 'legacy_migration' && ' · imported before version history existed'}
+      </p>
+      <AiResultView
+        ai={ai}
+        result={selected.result}
+        busy={busy}
+        onDeepDive={(issue, strokeId) => onDeepDive(selected, issue, strokeId)}
+      />
+    </div>
   )
 }
 

@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy import select
 
 from tennis_api.ai import pack as pk
@@ -18,17 +18,33 @@ from tennis_api.ai.builder import (
     PackOptions,
     build_session_pack,
     build_single_stroke_pack,
+    manifest_sha256,
 )
 from tennis_api.ai.client import get_ai_client
 from tennis_api.ai.result import AnalysisResult
 from tennis_api.ai.sources import session_metadata, video_sources
+from tennis_api.ai.validation import (
+    PackAnchor,
+    ValidationOutcome,
+    load_pack,
+    read_anchored_manifest,
+    read_verified_image,
+)
 from tennis_api.config import REPO_ROOT, Settings
 from tennis_api.deps import DbDep, SettingsDep
 from tennis_api.errors import ApiError, not_found
-from tennis_api.models import AiAnalysis, AiAnalysisStatus, Analysis, AnalysisStatus
+from tennis_api.models import (
+    AiAnalysis,
+    AiAnalysisImport,
+    AiAnalysisStatus,
+    AiImportOrigin,
+    Analysis,
+    AnalysisStatus,
+)
 from tennis_api.schemas import (
     AiAnalysisOut,
     AiHandoffOut,
+    AiImportOut,
     AiValidationProblemOut,
     SingleStrokeAiRequest,
 )
@@ -45,23 +61,69 @@ def _display_path(path: Path) -> str:
         return path.resolve().as_posix()
 
 
+def _anchor(row: AiAnalysis) -> PackAnchor | None:
+    """The integrity anchor recorded at creation; ``None`` for legacy packs."""
+    if not row.manifest_sha256:
+        return None
+    return PackAnchor(
+        pack_id=row.pack_id,
+        analysis_id=row.analysis_id,
+        kind=pk.PackKind(row.kind),
+        manifest_sha256=row.manifest_sha256,
+    )
+
+
+def _pack_dir(row: AiAnalysis, settings: Settings) -> Path:
+    return settings.storage_dir / row.pack_dir
+
+
+def _manifest_state(row: AiAnalysis, settings: Settings) -> tuple[str, pk.Manifest | None]:
+    anchor = _anchor(row)
+    if anchor is None:
+        return "legacy", None
+    outcome = ValidationOutcome()
+    verified = read_anchored_manifest(_pack_dir(row, settings), anchor, outcome)
+    if verified is not None:
+        return "verified", verified.manifest
+    codes = {e.code for e in outcome.errors}
+    return ("missing" if codes <= {"pack_manifest_missing", "pack_missing"} else "modified"), None
+
+
+def _import_out(imp: AiAnalysisImport) -> AiImportOut:
+    return AiImportOut(
+        id=imp.id,
+        version=imp.version,
+        imported_at=imp.imported_at,
+        origin=imp.origin,
+        adapter=imp.adapter,
+        model=imp.model,
+        pack_id=imp.pack_id,
+        result_sha256=imp.result_sha256,
+        result=imp.result,
+        validation_warnings=[
+            AiValidationProblemOut.model_validate(w) for w in imp.validation_warnings or []
+        ],
+    )
+
+
 def _to_out(row: AiAnalysis, settings: Settings) -> AiAnalysisOut:
-    pack_dir = settings.storage_dir / row.pack_dir
+    pack_dir = _pack_dir(row, settings)
+    pack_status, manifest = _manifest_state(row, settings)
     handoff = None
-    if row.status != AiAnalysisStatus.IMPORTED.value:
+    if row.status != AiAnalysisStatus.IMPORTED.value and pack_status == "verified":
         client = get_ai_client(row.adapter)
         if client.interactive:
             handoff = client.request_analysis(
                 pack_dir, _display_path(pack_dir), pk.PackKind(row.kind)
             )
     images: list[dict[str, object]] = []
-    manifest_path = pack_dir / pk.MANIFEST
-    if manifest_path.is_file():
-        manifest = pk.Manifest.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    if manifest is not None:
         images = [
             {**img.model_dump(mode="json"), "url": f"/api/ai-analyses/{row.id}/images/{img.id}"}
             for img in manifest.images
         ]
+    imports = [_import_out(i) for i in row.imports]
+    latest = imports[-1] if imports else None
     return AiAnalysisOut(
         id=row.id,
         analysis_id=row.analysis_id,
@@ -70,10 +132,11 @@ def _to_out(row: AiAnalysis, settings: Settings) -> AiAnalysisOut:
         pack_path=_display_path(pack_dir),
         adapter=row.adapter,
         status=row.status,
+        pack_status=pack_status,
         target=row.target,
         data_status=row.data_status,
-        result=row.result,
-        model=row.model,
+        result=latest.result if latest else None,
+        model=latest.model if latest else None,
         validation_errors=[
             AiValidationProblemOut.model_validate(e) for e in row.validation_errors or []
         ],
@@ -82,7 +145,9 @@ def _to_out(row: AiAnalysis, settings: Settings) -> AiAnalysisOut:
         ],
         import_attempts=row.import_attempts,
         created_at=row.created_at,
-        imported_at=row.imported_at,
+        imported_at=latest.imported_at if latest else None,
+        last_rejected_at=row.last_rejected_at,
+        imports=imports,
         handoff=AiHandoffOut.model_validate(handoff.model_dump()) if handoff else None,
         images=images,
     )
@@ -114,6 +179,8 @@ def _save(
         status=AiAnalysisStatus.AWAITING_RESULT.value,
         target=manifest.target.model_dump(mode="json") if manifest.target else None,
         data_status={k: v.value for k, v in manifest.data_status.items()},
+        # C2: the expected manifest hash lives in the database, outside the pack folder.
+        manifest_sha256=manifest_sha256(manifest),
     )
     db.add(row)
     db.commit()
@@ -155,18 +222,26 @@ def prepare_session(analysis_id: str, db: DbDep, settings: SettingsDep) -> AiAna
 def _find_stroke(
     db: DbDep, settings: Settings, analysis_id: str, stroke_id: str
 ) -> pk.StrokeRecord | None:
-    """Look the stroke up in this analysis' session packs (the engine's stroke list)."""
+    """Look the stroke up in this analysis' session packs (the engine's stroke list).
+
+    Only packs that pass the full integrity check (manifest anchored in the database,
+    every file hash) are used: a modified or legacy pack is ignored.
+    """
     rows = db.scalars(
-        select(AiAnalysis).where(
-            AiAnalysis.analysis_id == analysis_id, AiAnalysis.kind == pk.PackKind.SESSION.value
-        )
+        select(AiAnalysis)
+        .where(AiAnalysis.analysis_id == analysis_id, AiAnalysis.kind == pk.PackKind.SESSION.value)
+        .order_by(AiAnalysis.created_at.desc())
     ).all()
     for row in rows:
-        path = settings.storage_dir / row.pack_dir / pk.STROKES
-        if path.is_file():
-            for s in pk.StrokesFile.model_validate_json(path.read_text()).strokes:
-                if s.id == stroke_id:
-                    return s
+        anchor = _anchor(row)
+        if anchor is None:
+            continue
+        loaded = load_pack(_pack_dir(row, settings), ValidationOutcome(), anchor)
+        if loaded is None:
+            continue
+        for s in loaded.strokes.strokes:
+            if s.id == stroke_id:
+                return s
     return None
 
 
@@ -182,14 +257,21 @@ def prepare_single_stroke(
     motivating = None
     if body.source_ai_analysis_id and body.issue_id:
         src = db.get(AiAnalysis, body.source_ai_analysis_id)
-        if src is None or src.analysis_id != a.id or src.result is None:
+        if src is None or src.analysis_id != a.id or not src.imports:
             raise ApiError(404, "ai_analysis_not_found", "Source AI analysis not found")
-        result = AnalysisResult.model_validate(src.result)
+        if body.source_import_id:
+            src_import = next((i for i in src.imports if i.id == body.source_import_id), None)
+            if src_import is None:
+                raise ApiError(404, "ai_import_not_found", "Source AI result version not found")
+        else:
+            src_import = src.imports[-1]
+        result = AnalysisResult.model_validate(src_import.result)
         issue = next((i for i in result.issues if i.id == body.issue_id), None)
         if issue is None:
             raise ApiError(404, "issue_not_found", f"Issue '{body.issue_id}' not found")
         motivating = pk.MotivatingIssue(
             source_ai_analysis_id=src.id,
+            source_import_id=src_import.id,
             issue_id=issue.id,
             name=issue.name,
             description=issue.description,
@@ -247,15 +329,23 @@ def get_ai_analysis(ai_id: str, db: DbDep, settings: SettingsDep) -> AiAnalysisO
 
 @router.post("/api/ai-analyses/{ai_id}/import", response_model=AiAnalysisOut)
 def import_result(ai_id: str, db: DbDep, settings: SettingsDep) -> AiAnalysisOut:
-    """Validate ``analysis_result.json`` and store it. Invalid output is never imported."""
+    """Validate ``analysis_result.json`` and add it to the import history.
+
+    * Invalid output (including a modified, legacy or foreign pack) is never imported;
+      the history is untouched and only the latest-attempt fields change.
+    * Each valid import is a new version; earlier versions are never modified.
+    * Importing the exact same file again is refused (409): it would not be a new version.
+    """
     row = _get(db, ai_id)
     client = get_ai_client(row.adapter)
-    outcome = client.collect_result(settings.storage_dir / row.pack_dir)
+    outcome = client.collect_result(_pack_dir(row, settings), _anchor(row))
     row.import_attempts += 1
     row.validation_warnings = [w.model_dump() for w in outcome.warnings]
+    now = datetime.now(UTC)
     if not outcome.ok:
         row.validation_errors = [e.model_dump() for e in outcome.errors]
-        if row.status != AiAnalysisStatus.IMPORTED.value:
+        row.last_rejected_at = now
+        if not row.imports:
             row.status = AiAnalysisStatus.INVALID.value
         db.commit()
         raise ApiError(
@@ -264,23 +354,49 @@ def import_result(ai_id: str, db: DbDep, settings: SettingsDep) -> AiAnalysisOut
             "The AI result was not imported because it failed validation",
             {"errors": row.validation_errors, "ai_analysis_id": row.id},
         )
-    assert outcome.result is not None
-    row.result = outcome.result.model_dump(mode="json")
-    row.model = outcome.result.model
+    assert outcome.result is not None and outcome.result_sha256 is not None
+    duplicate = next((i for i in row.imports if i.result_sha256 == outcome.result_sha256), None)
+    if duplicate is not None:
+        db.commit()
+        raise ApiError(
+            409,
+            "ai_result_already_imported",
+            f"This exact result is already imported as version {duplicate.version}",
+            {"ai_analysis_id": row.id, "version": duplicate.version},
+        )
+    version = max((i.version for i in row.imports), default=0) + 1
+    row.imports.append(
+        AiAnalysisImport(
+            ai_analysis_id=row.id,
+            analysis_id=row.analysis_id,
+            version=version,
+            kind=row.kind,
+            pack_id=row.pack_id,
+            manifest_sha256=row.manifest_sha256,
+            result_sha256=outcome.result_sha256,
+            adapter=row.adapter,
+            model=outcome.result.model,
+            result=outcome.result.model_dump(mode="json"),
+            validation_warnings=row.validation_warnings,
+            origin=AiImportOrigin.IMPORT.value,
+            imported_at=now,
+        )
+    )
     row.validation_errors = []
     row.status = AiAnalysisStatus.IMPORTED.value
-    row.imported_at = datetime.now(UTC)
     db.commit()
     db.refresh(row)
     return _to_out(row, settings)
 
 
 @router.get("/api/ai-analyses/{ai_id}/images/{image_id}")
-def get_pack_image(ai_id: str, image_id: str, db: DbDep, settings: SettingsDep) -> FileResponse:
+def get_pack_image(ai_id: str, image_id: str, db: DbDep, settings: SettingsDep) -> Response:
+    """Serve one evidence JPEG of a verified pack (never a file outside the pack)."""
     row = _get(db, ai_id)
-    pack_dir = settings.storage_dir / row.pack_dir
-    manifest = pk.Manifest.model_validate_json((pack_dir / pk.MANIFEST).read_text())
-    img = next((i for i in manifest.images if i.id == image_id), None)
-    if img is None or not (pack_dir / img.path).is_file():
-        raise ApiError(404, "image_not_found", f"Image '{image_id}' not found")
-    return FileResponse(pack_dir / img.path, media_type="image/jpeg")
+    anchor = _anchor(row)
+    data = (
+        None if anchor is None else read_verified_image(_pack_dir(row, settings), anchor, image_id)
+    )
+    if data is None:
+        raise ApiError(404, "image_not_found", "Image not found")
+    return Response(content=data, media_type="image/jpeg")

@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from tennis_api.db import Base
@@ -138,9 +138,13 @@ class AiAnalysisStatus(StrEnum):
 
 
 class AiAnalysis(Base):
-    """An AI interpretation request: one Evidence Pack and, once imported, its result.
+    """An AI interpretation request: one Evidence Pack and its import history.
 
-    Kept apart from ``Analysis.results`` so the CV results stay immutable.
+    Kept apart from ``Analysis.results`` so the CV results stay immutable. Every valid
+    import is a new ``AiAnalysisImport`` row; nothing here is overwritten by an import.
+    ``validation_errors``/``validation_warnings`` describe the latest import attempt.
+    ``result``/``model``/``imported_at`` are legacy columns (before import history) and
+    are no longer written; existing values were copied to ``ai_analysis_imports``.
     """
 
     __tablename__ = "ai_analyses"
@@ -161,3 +165,54 @@ class AiAnalysis(Base):
     import_attempts: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    manifest_sha256: Mapped[str | None] = mapped_column(
+        String(64),
+        doc="SHA-256 of manifest.json at creation (C2 integrity anchor). NULL = legacy pack.",
+    )
+    last_rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    imports: Mapped[list[AiAnalysisImport]] = relationship(
+        back_populates="ai_analysis",
+        order_by="AiAnalysisImport.version",
+        cascade="all, delete-orphan",
+    )
+
+
+class AiImportOrigin(StrEnum):
+    IMPORT = "import"
+    LEGACY_MIGRATION = "legacy_migration"
+
+
+class AiAnalysisImport(Base):
+    """One validated AI result. Append-only: rows are never updated or deleted by the app."""
+
+    __tablename__ = "ai_analysis_imports"
+    __table_args__ = (UniqueConstraint("ai_analysis_id", "version"),)
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=new_id)
+    ai_analysis_id: Mapped[str] = mapped_column(ForeignKey("ai_analyses.id"), index=True)
+    analysis_id: Mapped[str] = mapped_column(ForeignKey("analyses.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer, doc="1, 2, … per AI analysis")
+    kind: Mapped[str] = mapped_column(String(32))
+    pack_id: Mapped[str] = mapped_column(String(64))
+    manifest_sha256: Mapped[str | None] = mapped_column(String(64))
+    result_sha256: Mapped[str | None] = mapped_column(
+        String(64), doc="SHA-256 of analysis_result.json as imported (NULL for legacy rows)"
+    )
+    adapter: Mapped[str] = mapped_column(String(32))
+    model: Mapped[str | None] = mapped_column(String(128), doc="Self-reported by the analyst")
+    result: Mapped[dict[str, Any]] = mapped_column(JSON)
+    validation_warnings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
+    origin: Mapped[str] = mapped_column(String(24), default=AiImportOrigin.IMPORT.value)
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    ai_analysis: Mapped[AiAnalysis] = relationship(back_populates="imports")
+
+
+class SchemaMigration(Base):
+    """Applied in-place schema migrations (see ``tennis_api.migrations``)."""
+
+    __tablename__ = "schema_migrations"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

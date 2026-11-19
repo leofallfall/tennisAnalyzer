@@ -51,11 +51,27 @@ analysis. Their meaning is given by `Analysis.video_relation`, which the user mu
 declare explicitly whenever more than one video is attached.
 
 ### AiAnalysis **[implemented, experimental]**
-One AI interpretation request: `analysis_id`, `kind` (session | single_stroke), `pack_id`,
-`pack_dir` (relative to storage), `adapter`, `status` (awaiting_result | imported |
-invalid), `target`, `data_status`, validated `result` (`AnalysisResult` JSON), `model`,
-`validation_errors/warnings`, `import_attempts`, timestamps. Never modifies
-`Analysis.results`. See `AI_ANALYSIS.md`.
+One AI interpretation request, i.e. one Evidence Pack: `analysis_id`, `kind` (session |
+single_stroke), `pack_id`, `pack_dir` (relative to storage), `adapter`, `status`
+(awaiting_result | imported | invalid), `target`, `data_status`, **`manifest_sha256`**
+(SHA-256 of `manifest.json` recorded at creation: the integrity anchor; NULL = legacy pack
+created before the anchor existed, which cannot be imported), `validation_errors/warnings`
+and `last_rejected_at` (latest import attempt), `import_attempts`, `created_at`.
+Legacy columns `result`, `model`, `imported_at` are no longer written (copied to
+`AiAnalysisImport` by the 2026-11-18 migration). Never modifies `Analysis.results`.
+See `AI_ANALYSIS.md`.
+
+### AiAnalysisImport **[implemented, experimental]**
+Append-only history of validated AI results: one row per valid import (`version` 1, 2, …
+unique per AiAnalysis), with `ai_analysis_id`, `analysis_id`, `kind`, `pack_id`,
+`manifest_sha256`, `result_sha256` (hash of the imported `analysis_result.json`),
+`adapter`, `model` (self-reported), `result`, `validation_warnings`, `origin` (import |
+legacy_migration), `imported_at`. The app never updates or deletes these rows; an invalid
+import attempt does not touch them.
+
+### SchemaMigration
+`schema_migrations(id, applied_at)`: in-place migrations applied by the API at startup
+(`tennis_api.migrations`; additive only, no Alembic yet).
 
 ### ProcessingJob **[M1]**
 `id, analysis_id, kind, status, attempts, worker_id, created_at, started_at,

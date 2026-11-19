@@ -16,7 +16,8 @@ the Evidence Pack, the validation, the UI or the flow.
 CV pipeline (unchanged) ──► report.json · pose.json · proxy.mp4   (immutable)
                                    │ read-only
 "Prepare AI analysis" ──► tennis_api.ai.builder ──► storage/ai/<analysis_id>/<pack_id>/
-                                                        manifest.json (sha256 of every file)
+                                                        manifest.json (sha256 of every file;
+                                                          its own sha256 is kept in the DB)
                                                         session_metadata.json, data_quality.json
                                                         strokes.json, measurements.json
                                                         aggregates.json, issues_candidates.json
@@ -24,7 +25,7 @@ CV pipeline (unchanged) ──► report.json · pose.json · proxy.mp4   (immut
                                                         evidence/*.jpg (≤ 768 px, skeleton drawn)
                                                         claude_instructions.md, result_schema.json
 User runs `claude` → /analizza-sessione <pack>   ──►    analysis_result.json  (only file written)
-"Import AI analysis" ──► AIClient.collect_result ──► validation ──► ai_analyses table ──► UI
+"Import AI analysis" ──► AIClient.collect_result ──► validation ──► ai_analysis_imports (v1, v2…) ──► UI
 ```
 
 | Piece | Where |
@@ -34,6 +35,8 @@ User runs `claude` → /analizza-sessione <pack>   ──►    analysis_result.
 | Pack builder | `apps/api/tennis_api/ai/builder.py` |
 | Instructions in each pack | `apps/api/tennis_api/ai/instructions.py` |
 | Validation | `apps/api/tennis_api/ai/validation.py` |
+| Safe pack file access (paths, symlinks) | `apps/api/tennis_api/ai/safe_files.py` |
+| Schema migrations | `apps/api/tennis_api/migrations.py` |
 | `AIClient`, `ClaudeCodeAdapter`, `AnthropicAPIAdapter` (stub) | `apps/api/tennis_api/ai/client.py` |
 | API endpoints | `apps/api/tennis_api/routers/ai.py` |
 | Claude Code skill | `.claude/skills/analizza-sessione/SKILL.md` |
@@ -49,15 +52,24 @@ library (ADR-002, ADR-013).
 |---|---|---|
 | GET | `/api/analyses/{id}/ai` | AI analyses of an analysis (newest first) |
 | POST | `/api/analyses/{id}/ai/session` | Build a session Evidence Pack |
-| POST | `/api/analyses/{id}/ai/single-stroke` | Build a single-stroke pack. Body: `stroke_id` (from a session pack) **or** `start_s`/`end_s` (user interval ≤ 6 s), optional `declared_stroke_type`, optional `source_ai_analysis_id` + `issue_id` (the issue to deep-dive). A single-stroke upload with no body uses the whole clip. |
-| GET | `/api/ai-analyses/{ai_id}` | One AI analysis with handoff instructions and evidence images |
-| POST | `/api/ai-analyses/{ai_id}/import` | Validate `analysis_result.json` and store it. Returns 422 `ai_result_invalid` with every problem; nothing is imported. |
-| GET | `/api/ai-analyses/{ai_id}/images/{image_id}` | Evidence JPEG |
+| POST | `/api/analyses/{id}/ai/single-stroke` | Build a single-stroke pack. Body: `stroke_id` (from a verified session pack) **or** `start_s`/`end_s` (user interval ≤ 6 s), optional `declared_stroke_type`, optional `source_ai_analysis_id` + `issue_id` (the issue to deep-dive) and `source_import_id` (the version it comes from; default latest). A single-stroke upload with no body uses the whole clip. |
+| GET | `/api/ai-analyses/{ai_id}` | One AI analysis: `pack_status`, handoff instructions, evidence images, every imported version (`imports`, oldest first) |
+| POST | `/api/ai-analyses/{ai_id}/import` | Validate `analysis_result.json` and add it as a new version. 422 `ai_result_invalid` lists every problem and changes no version; 409 `ai_result_already_imported` if the same file is already a version. |
+| GET | `/api/ai-analyses/{ai_id}/images/{image_id}` | Evidence JPEG of a verified pack (404 otherwise) |
 
 ## Honesty rules enforced by validation
 
-1. **Pack integrity.** Every pack file must match its SHA-256 in `manifest.json`: a
-   modified or missing file blocks the import. Extra files only produce a warning.
+1. **Pack integrity** (ADR-014).
+   - `manifest.json` must match the SHA-256 the app stored in the database when it created
+     the pack. Pack id, analysis id, kind and folder must match the database row.
+   - Every file must match its SHA-256 in the manifest, and every file required for the
+     pack kind must be listed.
+   - Paths must be plain relative names inside the pack (no absolute path, no `..`).
+     Files are opened without following symbolic links, and must be regular files.
+   - Any symlink, or any file the app did not create (other than `analysis_result.json`),
+     blocks the import.
+   - **Legacy packs**, created before the hash was stored, cannot be imported: prepare a
+     new AI analysis.
 2. **JSON, then schema.**
    - Strict Pydantic validation: unknown fields are rejected.
    - Percentages must equal occurrences divided by evaluable strokes.
@@ -72,8 +84,12 @@ library (ADR-002, ADR-013).
    - **Angles written in text must be pack values** at the cited precision.
      - This guards against invented angles.
      - With dense time series, an invented value can still coincide with a real one, so it is a guard, not a proof.
-4. **Immutability.** CV results and `Analysis.results` are never written by this flow (tested).
-   A later invalid file does not overwrite an imported result.
+4. **Immutability.**
+   - CV results and `Analysis.results` are never written by this flow (tested).
+   - Each valid import is a new version in `ai_analysis_imports`. Earlier versions are
+     never modified or deleted.
+   - An invalid attempt changes no version; the UI shows it as "last import attempt
+     rejected".
 
 ## Using it with a real session (Claude Code)
 
@@ -86,13 +102,15 @@ library (ADR-002, ADR-013).
    - Paste the command.
    - Claude reads the pack, writes `analysis_result.json` and runs `uv run python scripts/ai_pack.py validate <pack>` until it prints `OK`.
    - Allow only that write when asked.
-4. **Import:** back in the app, press **Import AI analysis**. Invalid output shows each problem. Fix the file, or ask Claude Code to fix it, and import again.
+4. **Import:** back in the app, press **Import AI analysis**. Invalid output shows each problem. Fix the file, or ask Claude Code to fix it, and import again. To add a new version later, run the skill again and press **Import new version**. Every version stays listed in chronological order.
 5. **Single stroke:**
    - **From a session result:** pick an issue and one of its strokes, then press **Deep-dive this stroke**.
    - **Without detected strokes (today):** pause the player on a stroke, choose the stroke type you see, and press **Prepare single-stroke analysis at <time> (±1 s)**.
    - Then repeat steps 3–4.
 
-The packs live under `storage/` (git-ignored, local only). No video, full pose data, credential or absolute path is put in a pack.
+The packs live under `storage/` (git-ignored, local only).
+- **Not in a pack:** video, full pose data, credentials, absolute paths, or the free text you typed (analysis title, focus, original file name). Videos are referred to by opaque ids.
+- **In a pack, and sent to the Claude service when the skill reads it:** the evidence frames, which show every person in view.
 
 ## Switching to the Anthropic API later
 
@@ -112,6 +130,6 @@ Implement `AnthropicAPIAdapter.request_analysis` and select it with `TPA_AI_ADAP
   - Single-stroke packs from a user interval carry per-frame 2D elbow and knee angles, with no phases and no hitting-arm identification.
 - **Measured issue lists have only been exercised with synthetic fixtures.**
 - **`pose.json` is loaded whole to build a pack.** That is fine for short clips; for long sessions see audit step 1.3.
-- **The model name in the result is self-reported** by Claude Code.
-- **Claude Code's permission prompts are the user's control over writes.** The skill restricts writes to `analysis_result.json`, but the app cannot technically prevent other writes in an interactive Claude Code session. Integrity hashes detect any change to the pack itself.
+- **The model name in the result is self-reported** by Claude Code (labelled so in the UI).
+- **Claude Code's permission prompts are the user's control over writes.** The skill restricts writes to `analysis_result.json`, but the app cannot technically prevent other writes in an interactive Claude Code session. Integrity hashes, anchored in the database, detect any change to the pack itself. The anchor protects against accidental or unreviewed changes, not against a local process that can also write the database.
 - **Dates are shown 1 h early in Italy** (the open M1 bug, step 0.1 of the audit roadmap).

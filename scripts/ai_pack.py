@@ -1,6 +1,7 @@
 """Evidence Pack helper for the personal AI analysis flow (Claude Code).
 
-Read-only: it never imports into the database and never modifies the pack.
+Read-only: it never imports into the database and never modifies the pack. ``validate``
+reads the pack's integrity anchor (manifest hash) from the app database when it can.
 
 Usage:
     uv run python scripts/ai_pack.py validate PACK_DIR   # check analysis_result.json
@@ -13,17 +14,64 @@ import argparse
 import sys
 from pathlib import Path
 
-from tennis_api.ai.pack import MANIFEST, Manifest
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
+
+from tennis_api.ai.pack import MANIFEST, Manifest, PackKind
 from tennis_api.ai.result import RESULT_FILENAME
-from tennis_api.ai.validation import validate_result_file
+from tennis_api.ai.validation import PackAnchor, validate_result_file
 from tennis_api.config import get_settings
+
+
+def _db_anchor(pack_dir: Path) -> tuple[bool, PackAnchor | None]:
+    """Find the pack's integrity anchor in the app database (read-only).
+
+    Returns ``(registered, anchor)``: ``registered`` is false when the pack is not in the
+    database (or the database cannot be read); ``anchor`` is ``None`` for legacy packs.
+    """
+    settings = get_settings()
+    try:
+        rel = pack_dir.resolve().relative_to(settings.storage_dir.resolve()).as_posix()
+    except ValueError:
+        return False, None
+    if not settings.database_url and not (settings.storage_dir / "tpa.sqlite3").is_file():
+        return False, None
+    try:
+        engine = create_engine(settings.resolved_database_url)
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT pack_id, analysis_id, kind, manifest_sha256 FROM ai_analyses "
+                    "WHERE pack_dir = :p"
+                ),
+                {"p": rel},
+            ).first()
+        engine.dispose()
+    except SQLAlchemyError:
+        return False, None
+    if row is None:
+        return False, None
+    if not row.manifest_sha256:
+        return True, None
+    return True, PackAnchor(
+        pack_id=row.pack_id,
+        analysis_id=row.analysis_id,
+        kind=PackKind(row.kind),
+        manifest_sha256=row.manifest_sha256,
+    )
 
 
 def cmd_validate(pack_dir: Path) -> int:
     if not (pack_dir / MANIFEST).is_file():
         print(f"Not an Evidence Pack (no {MANIFEST}): {pack_dir}", file=sys.stderr)
         return 2
-    outcome = validate_result_file(pack_dir)
+    registered, anchor = _db_anchor(pack_dir)
+    if not registered:
+        print(
+            "WARNING [pack_not_registered]: this pack is not in the app database, so the "
+            "manifest hash could not be checked here. The app checks it on import."
+        )
+    outcome = validate_result_file(pack_dir, anchor, require_anchor=registered)
     for w in outcome.warnings:
         print(f"WARNING [{w.code}] {w.location or ''}: {w.message}")
     if outcome.ok:

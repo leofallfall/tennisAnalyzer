@@ -157,6 +157,9 @@ class SingleStrokeAiRequest(ApiModel):
         default=None, description="Stroke type stated by the user (never inferred)"
     )
     source_ai_analysis_id: str | None = None
+    source_import_id: str | None = Field(
+        default=None, description="Imported version the issue comes from (default: latest)"
+    )
     issue_id: str | None = None
 
     @model_validator(mode="after")
@@ -187,6 +190,21 @@ class AiValidationProblemOut(ApiModel):
     location: str | None = None
 
 
+class AiImportOut(ApiModel):
+    """One validated, imported AI result (append-only history)."""
+
+    id: str
+    version: int
+    imported_at: datetime
+    origin: str = Field(description="import | legacy_migration")
+    adapter: str
+    model: str | None = Field(description="Self-reported by the analyst; not verified")
+    pack_id: str
+    result_sha256: str | None
+    result: dict[str, Any]
+    validation_warnings: list[AiValidationProblemOut]
+
+
 class AiAnalysisOut(ApiModel):
     id: str
     analysis_id: str
@@ -197,14 +215,22 @@ class AiAnalysisOut(ApiModel):
     status: str
     target: dict[str, Any] | None
     data_status: dict[str, Any]
-    result: dict[str, Any] | None = Field(
-        description="Validated AnalysisResult (see the analysis_result contract)"
+    pack_status: str = Field(
+        description="verified | modified | missing | legacy (created before integrity "
+        "protection: cannot be imported, prepare a new pack)"
     )
-    model: str | None
+    result: dict[str, Any] | None = Field(
+        description="Latest imported AnalysisResult (same as imports[-1].result)"
+    )
+    model: str | None = Field(description="Latest import's self-reported model")
     validation_errors: list[AiValidationProblemOut]
     validation_warnings: list[AiValidationProblemOut]
     import_attempts: int
     created_at: datetime
     imported_at: datetime | None
+    last_rejected_at: datetime | None = None
+    imports: list[AiImportOut] = Field(
+        default_factory=list, description="Every imported version, oldest first"
+    )
     handoff: AiHandoffOut | None = None
     images: list[dict[str, Any]] = Field(default_factory=list)

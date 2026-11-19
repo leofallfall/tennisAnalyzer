@@ -167,4 +167,43 @@ describe('system status', () => {
     expect(screen.getByText('mediapipe_runtime')).toBeInTheDocument()
     expect(screen.getByText('Writable')).toBeInTheDocument()
   })
+
+  it('lists the most recent processing errors with a link to the analysis', async () => {
+    const failed = (id: string, finished: string, code: string) => ({
+      ...baseAnalysis,
+      id,
+      title: `Analysis ${id}`,
+      video_count: 1,
+      status: 'failed',
+      error: { code, message: `${code} message`, details: {} },
+      finished_at: finished,
+    })
+    mockFetch({
+      '/api/system/info': {
+        ...systemInfo,
+        pose_runtime: { ...systemInfo.pose_runtime, available: true, detail: null },
+      },
+      '/api/analyses': [
+        { ...baseAnalysis, id: 'ok', video_count: 1, status: 'completed' },
+        failed('old', '2026-11-18T09:00:00Z', 'probe_failed'),
+        failed('new', '2026-11-19T09:00:00Z', 'pose_runtime_unavailable'),
+      ],
+    })
+    renderAt('/system')
+    const list = await screen.findByRole('list', { name: 'Recent processing errors' })
+    const items = within(list).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent('pose_runtime_unavailable')
+    expect(within(items[0]!).getByRole('link', { name: 'Analysis new' })).toHaveAttribute(
+      'href',
+      '/analyses/new',
+    )
+    expect(items[1]).toHaveTextContent('probe_failed')
+  })
+
+  it('says so when there are no failed analyses', async () => {
+    mockFetch({ '/api/system/info': systemInfo, '/api/analyses': [] })
+    renderAt('/system')
+    expect(await screen.findByText('No failed analyses.')).toBeInTheDocument()
+  })
 })

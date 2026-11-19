@@ -40,13 +40,54 @@ Unreadable files → 422 `probe_failed`.
 ## 4. Preprocessing (proxy)
 
 `preprocess_video` → `proxy.mp4`: rotation applied by FFmpeg auto-rotate; long side capped
-at 1920 px (even dimensions); VFR resampled to its average rate with `fps=` filter;
-`-fps_mode cfr`; H.264 yuv420p CRF 18 `+faststart`. Audio dropped.
+at 1920 px (even dimensions); filter chain `setpts=PTS-STARTPTS,fps=<rate>:eof_action=pass`
+(since M1.10) where `<rate>` is the average rate rounded to 3 decimals for VFR inputs and the
+nominal rate as a rational (e.g. `30000/1001`) for CFR inputs, which are therefore not
+resampled; `-fps_mode cfr`; H.264 yuv420p CRF 18 `+faststart`. Audio dropped.
 
-**Trade-off**: resampling VFR to CFR may duplicate/drop individual frames (error ≤ half a
-frame interval). Accepted because it gives an exact `index / fps` time base, which
-phase timing and cross-video alignment depend on. Revisit if contact timing needs
-sub-frame accuracy (would require PTS-based timestamps end to end).
+Proxy time 0 is the **first decoded video frame** of the source: a non-zero `start_time` or
+an audio track that starts earlier no longer adds duplicated frames at the start (before
+M1.10 it did, because FFmpeg aligned the proxy on the container start).
+
+**Trade-off**: resampling VFR to CFR duplicates/drops individual frames. Accepted because it
+gives an exact `index / fps` time base, which phase timing and cross-video alignment depend
+on. The link back to the original is kept in `timemap.json` (§4.1). Revisit if contact
+timing needs sub-frame accuracy (would require PTS-based timestamps end to end).
+
+### 4.1 Time mapping proxy → original (`timemap.json`, M1.10)
+
+**This is a reconstruction, frame-exact but time-approximate, not an exact time
+synchronisation** (`exact_time_sync: false` in every map).
+
+- **Algorithm** (`tennis_cv/video/timemap.py`): ffprobe reads the packet PTS of the source
+  video stream (no decoding), drops packets flagged *discard* by the edit list, sorts them
+  (presentation order) and subtracts the first one. Source frame `i` at relative time `t_i`
+  belongs to proxy slot `s_i = floor(t_i × fps + 0.5)` — the rule of FFmpeg's `fps` filter
+  (`round=near`). Proxy frame `k` shows the **last** source frame with `s_i ≤ k`. Proxy
+  frames after the last slot (`eof_action=pass`) repeat the last source frame.
+- **Content**: `summary` (also in `report.json` as `time_mapping`), `source_times_s`
+  (each source frame's time relative to the first) and `proxy_to_source` (source frame index
+  for every proxy frame).
+- **Going back to the original**: absolute time in the original file of the frame shown at
+  proxy time `T` = `source_start_pts_s + source_times_s[proxy_to_source[floor(T × fps)]]`
+  (`TimeMap.source_time`). `source_start_pts_s` is the presentation time of the first video
+  frame in the original container (it handles a non-zero `start_time`).
+- **Duplicated and dropped frames**: `duplicated_frames` counts proxy frames repeating the
+  previous source frame (gaps, lower source rate); `dropped_frames` counts source frames
+  shown by no proxy frame (several in one slot, higher source rate).
+- **Expected precision**: frame identity is exact *if FFmpeg applies the rule as
+  reconstructed*: verified on synthetic videos whose frames carry their own index in the
+  pixels (CFR 30 fps, VFR 30→120 fps, `start_time` 2.5 s, audio 0.5 s earlier, 240 fps CFR,
+  jittery 120 fps with missing frames: 0 mismatches). Time error |proxy time − source time
+  of the frame shown| is ≤ half a proxy interval where the source is dense, larger across
+  gaps; each map reports `max_abs_error_ms` and `mean_abs_error_ms`.
+- **Limits**: not validated on real smartphone files yet (M1.11). Real VFR/high-frame-rate
+  phones can have irregular timestamps, edit lists and slow-motion metadata (e.g. iPhone
+  slo-mo playback ramps), which are ignored: times are the container's presentation times.
+  VFR resampling to the average rate means a 240 fps burst inside a 30 fps clip is decimated
+  (many `dropped_frames`). Tie cases exactly at half a slot depend on floating-point
+  rounding. If the map cannot be built (ffprobe failure) the analysis still completes,
+  `time_mapping` is `null` and the event is logged.
 
 ## 5. Frame extraction
 
@@ -68,6 +109,24 @@ MediaPipe Pose Landmarker (Tasks API, `VIDEO` running mode, `num_poses=1`, model
 Output `pose.json` (`PoseSequence`): 33 normalised keypoints per frame with visibility and
 presence; frames without a person have `detected=false`. Measured on CPU (4 vCPU):
 ≈ 20 ms/frame for 576×768.
+
+**Stored precision (M1.10)**: x/y 5 decimals (0.02 px on a 1920 px side), z 4,
+visibility/presence 3; timestamps exact (`frame / fps`). Projected joint angles change by
+< 0.05° (tested). Size, 1 min at 30 fps of synthetic keypoints: ≈ 9.4 MB → ≈ 5.7 MB on disk;
+the API gzip-compresses JSON (≈ 1.1 MB transferred). The browser still loads the whole file:
+windowed/columnar loading is on the roadmap. Real pose data still has to be measured (M1.11).
+
+**One person only (`num_poses=1`)**: MediaPipe follows the most prominent person. With an
+opponent or another person closer to the camera the skeleton can switch to them **without
+any warning**. There is no automatic detection of subject switches (deliberately: an
+unvalidated heuristic would give false positives and negatives). During M1.11 the player
+to follow is annotated manually for each clip and every visible switch is recorded; explicit
+player selection stays on the roadmap.
+
+**Runtime check (M1.10)**: on Linux MediaPipe needs `libegl1 libgles2`. `import mediapipe`
+works without them; the failure appears when the landmarker is created. That failure is
+now the structured error `pose_runtime_unavailable` (with the install hint), and System
+Status reports `pose_runtime` by actually creating a landmarker.
 
 ## 8. Overlay
 
@@ -93,7 +152,20 @@ storage/
   tpa.sqlite3
   videos/<video_id>/original.<ext>
   analyses/<analysis_id>/videos/<video_id>/
-      proxy.mp4  pose.json  overlay.mp4  report.json
+      proxy.mp4  pose.json  overlay.mp4  report.json  timemap.json
 ```
 
-`report.json` (`ProcessingReport`) also lists `not_performed` analyses explicitly.
+`report.json` (`ProcessingReport`) also lists `not_performed` analyses explicitly. File
+references inside it are relative: the source by base name (`original.mp4`), the proxy
+relative to its folder (`proxy.mp4`).
+
+## 12. Errors and privacy (M1.10)
+
+Errors are structured (`{code, message, details}`) and never contain server paths:
+engine errors name files by base name and scrub ffmpeg/ffprobe stderr; the ffmpeg command
+and Python tracebacks go to the server log only (`internal_error` carries an `error_id` to
+find them). `tennis_api/redaction.py` replaces known server directories (`<storage>`,
+`<models>`, `<app>`, `<home>`) in every error body, analysis status/result and served
+`report.json`, which also covers rows written before M1.10. System Status lists the last
+5 failed analyses. Known exception: the AI hand-off command shows the Evidence Pack path the
+user has to type in Claude Code (absolute only when storage is outside the repository).

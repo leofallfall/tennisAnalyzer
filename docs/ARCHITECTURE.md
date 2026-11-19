@@ -63,16 +63,23 @@
 4. Worker claims the job (`UPDATE ... WHERE status='queued'`, rowcount check), runs
    `run_video_processing` per video, updating `stage`/`progress` (throttled to 2 Hz).
 5. Results JSON (one `ProcessingReport` per video) is stored on the analysis; artifacts
-   on disk. Failures store `error_code`, `error_message`, `error_details`.
+   on disk (`proxy.mp4`, `pose.json`, `overlay.mp4`, `report.json`, `timemap.json`).
+   Failures store `error_code`, `error_message`, `error_details`; the API redacts server
+   paths from all of them (`tennis_api/redaction.py`, M1.10) and System Status lists the
+   latest failures.
 6. Web polls `/status` every 1.5 s while busy, then loads the analysis, pose JSON and
    proxy, and renders the skeleton client-side synced with `requestVideoFrameCallback`.
 
 ## Time base
 
 The proxy is constant frame rate, so frame *i* has timestamp `i / fps`. All engine
-timestamps refer to the proxy timeline (starting at the first decoded frame). VFR
-sources are resampled to their average rate; the trade-off is documented in
-[VIDEO_PIPELINE.md](VIDEO_PIPELINE.md).
+timestamps refer to the proxy timeline (starting at the first decoded video frame). VFR
+sources are resampled to their average rate; `timemap.json` maps every proxy frame back to
+the source frame it shows (frame-exact, time-approximate). Details and limits in
+[VIDEO_PIPELINE.md](VIDEO_PIPELINE.md) §4.1.
+
+Wall-clock timestamps (created/started/finished) are UTC in the database and in the API;
+the browser converts them to local time.
 
 ## Local-first design
 

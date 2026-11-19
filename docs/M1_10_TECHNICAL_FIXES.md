@@ -91,7 +91,10 @@ Tutti i comandi sono stati eseguiti nel container di sviluppo (Linux, Python 3.1
 | Dopo #6 | `./scripts/check.sh` | verde: 143 pytest, 26 Vitest |
 | Dopo #7 | `./scripts/check.sh` | verde: 147 pytest, 26 Vitest |
 | Dopo #5 | `./scripts/check.sh` | verde: 151 pytest, 29 Vitest |
-| Finale (con documentazione) | `./scripts/check.sh` | verde: 151 pytest, 29 Vitest (ruff, mypy strict, contratti, ESLint, Prettier, tsc) |
+| Dopo documentazione (f27cbf0) | `./scripts/check.sh` | verde: 151 pytest, 29 Vitest |
+| Revisione A (ea1f285) | `./scripts/check.sh` | verde: 154 pytest, 29 Vitest |
+| Revisione B (3960a86) | `./scripts/check.sh` | verde: 156 pytest, 29 Vitest |
+| Revisione C (2d56406) e finale | `./scripts/check.sh` | verde: 159 pytest, 29 Vitest (ruff, mypy strict, contratti, ESLint, Prettier, tsc) |
 
 Verifiche aggiuntive:
 
@@ -106,10 +109,10 @@ Nuovi test (nessun test esistente rimosso):
 | File | Test | Copre |
 | --- | --- | --- |
 | `tests/integration/test_timestamps.py` | 3 | Offset UTC su tutte le date, righe naive pre-M1.10, normalizzazione |
-| `tests/integration/test_no_path_leaks.py` | 7 | `probe_failed`, risultati e report, righe e report pre-M1.10, `internal_error` (traceback solo nel log), `system/info`, errori del motore, redazione |
+| `tests/integration/test_no_path_leaks.py` | 9 | `probe_failed`, risultati e report, righe e report pre-M1.10, `internal_error` (traceback solo nel log), `system/info`, errori del motore, redazione |
 | `tests/integration/test_pose_runtime.py` | 5 | Errore strutturato, worker, `system/info` con runtime rotto e funzionante, modello mancante |
-| `tests/unit/test_timemap.py` | 7 | Verità a terra su 6 tipi di video e regola di selezione |
-| `tests/unit/test_pose_precision.py` | 3 | Arrotondamento, angoli invariati (< 0,05°), dimensione |
+| `tests/unit/test_timemap.py` | 10 | Verità a terra su 6 tipi di video, regola di selezione, mappa mancante non fatale (3 modi di fallimento) |
+| `tests/unit/test_pose_precision.py` | 6 | Estimatore a piena precisione, arrotondamento solo nel file, punteggi per difetto (0,5996 resta non osservabile), timestamp invariati, angoli (< 0,05°), dimensione |
 | `tests/integration/test_compression.py` | 1 | JSON gzip; video, range 206 e originale non compressi |
 | `tests/integration/test_player_handedness.py` | 4 | Persistenza, null, validazione, migrazione |
 | `apps/web/src/lib/format.test.ts` | +1 | Date API lette come UTC |
@@ -126,6 +129,23 @@ Test esistenti adattati, senza rimuoverli né indebolirli:
 - `test_migration_keeps_results_imported_before_the_history`: dopo aver svuotato
   `schema_migrations` si aspetta che girino entrambe le migrazioni.
 - Fixture web tipizzate come `Analysis`: aggiunti i due campi `null`.
+
+## 3bis. Revisione finale prima del merge
+
+La revisione mirata del 19/11/2026 ha trovato 3 problemi. Sono stati corretti con
+interventi minimi, approvati prima di procedere; l'algoritmo della timemap non è cambiato.
+
+| Commit | Problema | Correzione |
+| --- | --- | --- |
+| `ea1f285` | Timemap: con output JSON non valido o timeout di ffprobe l'analisi falliva (`internal_error`), contro il comportamento documentato | Anche questi casi, e gli errori del sistema operativo, producono `time_mapping: null`, nessun artefatto e un avviso nel log |
+| `3960a86` | Redazione: con `TPA_STORAGE_DIR` relativo veniva sostituita anche la parola "storage" e si otteneva `<<storage>>` | Si usano solo le varianti assolute delle radici; il limite sui percorsi esterni è documentato e testato |
+| `2d56406` | Keypoint: arrotondamento nell'estimatore (riepilogo e overlay su dati arrotondati); visibility 0,5996 → 0,600 superava la soglia 0,6 | Arrotondamento solo nella scrittura di `pose.json`; visibility/presence arrotondati per difetto |
+
+Verifiche superate senza modifiche: distinzione tra indici esatti e tempo approssimato,
+recupero `source_time` secondo `floor(T × fps)`, nessun componente che usi il tempo del
+proxy come tempo dell'originale, nessun traceback nelle risposte, report storici redatti in
+lettura, traceback completo nel log con `error_id`, timestamp invariati. Il frontend non
+legge ancora `time_mapping`: una mappa mancante non viene mostrata all'utente.
 
 ## 4. Problemi rimasti aperti
 
@@ -167,7 +187,7 @@ Priorità e milestone sono riportate anche in `docs/ROADMAP.md`, sezione "Open t
 Le condizioni concordate sono soddisfatte:
 
 - le criticità bloccanti (1, 2, 3+8, 6) sono risolte, e con loro le migliorative approvate (7, 5);
-- i test automatici sono verdi: 151 pytest e 29 Vitest, più lint, tipi e contratti;
+- i test automatici sono verdi: 159 pytest e 29 Vitest, più lint, tipi e contratti;
 - le limitazioni residue sono documentate qui e in `ROADMAP.md`;
 - il repository è in uno stato stabile: un commit per intervento su un branch dedicato, in
   attesa di revisione e merge su `main`.

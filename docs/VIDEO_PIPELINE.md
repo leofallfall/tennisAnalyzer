@@ -86,8 +86,11 @@ synchronisation** (`exact_time_sync: false` in every map).
   slo-mo playback ramps), which are ignored: times are the container's presentation times.
   VFR resampling to the average rate means a 240 fps burst inside a 30 fps clip is decimated
   (many `dropped_frames`). Tie cases exactly at half a slot depend on floating-point
-  rounding. If the map cannot be built (ffprobe failure) the analysis still completes,
-  `time_mapping` is `null` and the event is logged.
+  rounding. If the map cannot be built (ffprobe error, invalid ffprobe output, timeout or
+  OS error) the analysis still completes: `time_mapping` is `null`, there is no `timemap`
+  artifact and a warning is logged (tested for each case). The web UI does not read
+  `time_mapping` yet, so a missing map is not shown to the user; nothing in the app uses
+  proxy time as original time (player and Evidence Pack state the proxy timeline).
 
 ## 5. Frame extraction
 

@@ -146,3 +146,41 @@ def test_build_timemap_rule_and_lookup() -> None:
     assert tm.summary.dropped_frames == 1 and tm.summary.duplicated_frames == 2
     assert tm.source_time(0.25) == pytest.approx(10.12)
     assert tm.source_frame(99) == 3  # clamped to the last proxy frame
+
+
+@pytest.mark.parametrize(
+    "failure",
+    ["ffprobe_error", "invalid_json", "timeout"],
+)
+def test_timemap_failure_is_not_fatal(
+    failure: str,
+    basic_video: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When the map cannot be built the analysis completes with time_mapping = None,
+    no timemap artifact, and a warning in the server log."""
+    import tennis_cv.video.timemap as tm
+    from tennis_cv.pipeline import PipelineOptions, run_video_processing
+    from tests.integration.conftest import NoPersonEstimator
+
+    def fake(cmd: list[str], timeout_s: float | None = None) -> subprocess.CompletedProcess[str]:
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(cmd, 1)
+        if failure == "invalid_json":
+            return subprocess.CompletedProcess(cmd, 0, "{not json", "")
+        return subprocess.CompletedProcess(cmd, 1, "", "boom")
+
+    monkeypatch.setattr(tm, "run_tool", fake)
+    with caplog.at_level("WARNING"):
+        report = run_video_processing(
+            basic_video,
+            tmp_path,
+            NoPersonEstimator(),
+            options=PipelineOptions(render_overlay=False),
+        )
+    assert report.time_mapping is None
+    assert "timemap" not in report.artifacts
+    assert not (tmp_path / "timemap.json").exists()
+    assert "Time map not built" in caplog.text

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -245,7 +246,12 @@ def _write_timemap(
     try:
         times = read_source_frame_times(source)
     except TennisCVError as exc:
-        log.warning("Time map not built: %s", exc.message)
+        log.warning("Time map not built: %s %s", exc.code, exc.message)
+        return None
+    except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+        # Invalid ffprobe JSON (JSONDecodeError is a ValueError), timeout or OS error: the
+        # map is missing, the analysis is not failed (documented behaviour).
+        log.warning("Time map not built: %s", type(exc).__name__, exc_info=True)
         return None
     timemap = build_timemap(times, rate, prep.metadata.frame_count)
     (out / TIMEMAP_NAME).write_text(timemap.model_dump_json())

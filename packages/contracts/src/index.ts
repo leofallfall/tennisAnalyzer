@@ -125,10 +125,36 @@ export interface ProcessingReport {
   pose_estimator: string
   pose_model: string
   pose_summary: PoseSummary
+  /** Proxy -> original correspondence (frame-exact, time-approximate). Per-frame map in
+   * the `timemap` artifact. Absent in reports made before M1.10. */
+  time_mapping?: TimeMapSummary | null
   artifacts: Record<string, string>
   timings: StepTiming[]
   total_duration_ms: number
   not_performed: string[]
+}
+
+/** engine/tennis_cv/video/timemap.py — never an exact time synchronisation. */
+export interface TimeMapSummary {
+  method: string
+  exact_time_sync: false
+  source_start_pts_s: number
+  proxy_fps: number
+  source_frame_count: number
+  proxy_frame_count: number
+  duplicated_frames: number
+  dropped_frames: number
+  max_abs_error_ms: number
+  mean_abs_error_ms: number
+  limitations: string[]
+}
+
+export interface TimeMap {
+  summary: TimeMapSummary
+  /** Source frame times relative to the first frame, presentation order. */
+  source_times_s: number[]
+  /** Proxy frame k shows source frame proxy_to_source[k]. */
+  proxy_to_source: number[]
 }
 
 export interface TimeInterval {

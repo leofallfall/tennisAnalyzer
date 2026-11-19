@@ -266,6 +266,78 @@
       "title": "StepTiming",
       "type": "object"
     },
+    "TimeMapSummary": {
+      "additionalProperties": false,
+      "description": "Stored in the processing report; the per-frame map is in ``timemap.json``.",
+      "properties": {
+        "dropped_frames": {
+          "description": "Source frames that appear in no proxy frame",
+          "title": "Dropped Frames",
+          "type": "integer"
+        },
+        "duplicated_frames": {
+          "description": "Proxy frames repeating the previous source frame",
+          "title": "Duplicated Frames",
+          "type": "integer"
+        },
+        "exact_time_sync": {
+          "default": false,
+          "description": "Always false: the correspondence is frame-exact, time-approximate",
+          "title": "Exact Time Sync",
+          "type": "boolean"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "max_abs_error_ms": {
+          "description": "Worst |proxy time - source time of the frame shown|",
+          "title": "Max Abs Error Ms",
+          "type": "number"
+        },
+        "mean_abs_error_ms": {
+          "title": "Mean Abs Error Ms",
+          "type": "number"
+        },
+        "method": {
+          "default": "ffmpeg_fps_filter_reconstruction",
+          "title": "Method",
+          "type": "string"
+        },
+        "proxy_fps": {
+          "title": "Proxy Fps",
+          "type": "number"
+        },
+        "proxy_frame_count": {
+          "title": "Proxy Frame Count",
+          "type": "integer"
+        },
+        "source_frame_count": {
+          "title": "Source Frame Count",
+          "type": "integer"
+        },
+        "source_start_pts_s": {
+          "description": "Presentation time, in the original file, of its first video frame. Proxy time 0 corresponds to this instant.",
+          "title": "Source Start Pts S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_start_pts_s",
+        "proxy_fps",
+        "source_frame_count",
+        "proxy_frame_count",
+        "duplicated_frames",
+        "dropped_frames",
+        "max_abs_error_ms",
+        "mean_abs_error_ms"
+      ],
+      "title": "TimeMapSummary",
+      "type": "object"
+    },
     "ValidationIssue": {
       "additionalProperties": false,
       "properties": {
@@ -514,6 +586,18 @@
     },
     "source_metadata": {
       "$ref": "#/$defs/VideoMetadata"
+    },
+    "time_mapping": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TimeMapSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Proxy -> original frame correspondence (frame-exact, time-approximate); per-frame map in timemap.json. None when it could not be built."
     },
     "timings": {
       "items": {

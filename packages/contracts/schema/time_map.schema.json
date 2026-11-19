@@ -1,0 +1,105 @@
+{
+  "$defs": {
+    "TimeMapSummary": {
+      "additionalProperties": false,
+      "description": "Stored in the processing report; the per-frame map is in ``timemap.json``.",
+      "properties": {
+        "dropped_frames": {
+          "description": "Source frames that appear in no proxy frame",
+          "title": "Dropped Frames",
+          "type": "integer"
+        },
+        "duplicated_frames": {
+          "description": "Proxy frames repeating the previous source frame",
+          "title": "Duplicated Frames",
+          "type": "integer"
+        },
+        "exact_time_sync": {
+          "default": false,
+          "description": "Always false: the correspondence is frame-exact, time-approximate",
+          "title": "Exact Time Sync",
+          "type": "boolean"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "max_abs_error_ms": {
+          "description": "Worst |proxy time - source time of the frame shown|",
+          "title": "Max Abs Error Ms",
+          "type": "number"
+        },
+        "mean_abs_error_ms": {
+          "title": "Mean Abs Error Ms",
+          "type": "number"
+        },
+        "method": {
+          "default": "ffmpeg_fps_filter_reconstruction",
+          "title": "Method",
+          "type": "string"
+        },
+        "proxy_fps": {
+          "title": "Proxy Fps",
+          "type": "number"
+        },
+        "proxy_frame_count": {
+          "title": "Proxy Frame Count",
+          "type": "integer"
+        },
+        "source_frame_count": {
+          "title": "Source Frame Count",
+          "type": "integer"
+        },
+        "source_start_pts_s": {
+          "description": "Presentation time, in the original file, of its first video frame. Proxy time 0 corresponds to this instant.",
+          "title": "Source Start Pts S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source_start_pts_s",
+        "proxy_fps",
+        "source_frame_count",
+        "proxy_frame_count",
+        "duplicated_frames",
+        "dropped_frames",
+        "max_abs_error_ms",
+        "mean_abs_error_ms"
+      ],
+      "title": "TimeMapSummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Proxy frame ``k`` shows source frame ``proxy_to_source[k]`` (presentation order),\nwhose time in the original file is ``source_start_pts_s + source_times_s[...]``.",
+  "properties": {
+    "proxy_to_source": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Proxy To Source",
+      "type": "array"
+    },
+    "source_times_s": {
+      "description": "Source frame times relative to the first frame, presentation order",
+      "items": {
+        "type": "number"
+      },
+      "title": "Source Times S",
+      "type": "array"
+    },
+    "summary": {
+      "$ref": "#/$defs/TimeMapSummary"
+    }
+  },
+  "required": [
+    "summary",
+    "source_times_s",
+    "proxy_to_source"
+  ],
+  "title": "TimeMap",
+  "type": "object"
+}

@@ -25,7 +25,9 @@ def test_command_caps_long_side_for_portrait() -> None:
     cmd = build_preprocess_command("in", "out", meta, PreprocessOptions(max_long_side_px=1920))
     vf = cmd[cmd.index("-vf") + 1]
     assert "scale=-2:trunc(min(ih\\,1920)/2)*2" in vf
-    assert "fps=" not in vf  # CFR input is not resampled
+    # CFR input is not resampled: the fps filter (always present since M1.10, so one rule
+    # maps proxy frames to source frames) keeps the nominal rate.
+    assert vf.endswith("setpts=PTS-STARTPTS,fps=30/1:eof_action=pass")
 
 
 def test_proxy_applies_rotation(rotated_video: Path, tmp_path: Path) -> None:

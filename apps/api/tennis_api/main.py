@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from tennis_api.config import Settings, get_settings
 from tennis_api.db import Database
@@ -39,6 +40,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # M1.10: JSON (pose.json ~5-10x smaller on the wire) is gzip-compressed when the
+    # client accepts it. Starlette never compresses video/* or 206 range responses, so
+    # video seeking is unaffected.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     install_error_handlers(app)
     app.include_router(system.router)
     app.include_router(videos.router)

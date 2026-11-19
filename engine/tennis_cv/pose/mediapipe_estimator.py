@@ -26,6 +26,12 @@ MODEL_URLS: dict[str, str] = {
 }
 DEFAULT_VARIANT = "full"
 
+# M1.10: stored precision. x/y are normalised: 1e-5 is 0.02 px on a 1920 px side, far
+# below MediaPipe's own error. z is a relative estimate; visibility/presence are
+# likelihoods. Timestamps stay exact (frame / fps). Shrinks pose.json by about 40%
+# without changing its format.
+XY_DECIMALS, Z_DECIMALS, SCORE_DECIMALS = 5, 4, 3
+
 RUNTIME_HINT = (
     "On Linux install the system libraries MediaPipe needs: "
     "sudo apt install libegl1 libgles2 (see README, Prerequisites)."
@@ -105,14 +111,18 @@ class MediaPipePoseEstimator(PoseEstimator):
         self._last_ts_ms = ts_ms
         result = self._landmarker.detect_for_video(image, ts_ms)
         if not result.pose_landmarks:
-            return PoseFrame(frame_index=frame.index, timestamp_s=frame.timestamp_s, detected=False)
+            return PoseFrame(
+                frame_index=frame.index,
+                timestamp_s=frame.timestamp_s,
+                detected=False,
+            )
         landmarks = result.pose_landmarks[0]
         keypoints = [
             Keypoint(
                 name=LANDMARK_NAMES[i],
-                x=float(lm.x),
-                y=float(lm.y),
-                z=float(lm.z),
+                x=round(float(lm.x), XY_DECIMALS),
+                y=round(float(lm.y), XY_DECIMALS),
+                z=round(float(lm.z), Z_DECIMALS),
                 visibility=_unit(lm.visibility),
                 presence=_unit(lm.presence),
             )
@@ -164,4 +174,4 @@ def check_pose_runtime(model_path: str | Path | None = None) -> tuple[bool, str 
 def _unit(v: float | None) -> float | None:
     if v is None:
         return None
-    return min(1.0, max(0.0, float(v)))
+    return round(min(1.0, max(0.0, float(v))), SCORE_DECIMALS)

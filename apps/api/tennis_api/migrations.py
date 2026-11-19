@@ -70,8 +70,19 @@ def _ai_integrity_and_history(conn: Connection) -> None:
         )
 
 
+def _analysis_player_handedness(conn: Connection) -> None:
+    """2026-11 (M1.10): declared dominant hand and backhand style on analyses.
+
+    Nullable, no backfill: existing analyses stay NULL ("not provided"). Values are never
+    inferred, including from the browser-only player profile.
+    """
+    _add_column(conn, "analyses", "dominant_hand", "VARCHAR(8)")
+    _add_column(conn, "analyses", "backhand", "VARCHAR(16)")
+
+
 MIGRATIONS: list[tuple[str, Callable[[Connection], None]]] = [
     ("2026_11_18_ai_integrity_and_history", _ai_integrity_and_history),
+    ("2026_11_19_analysis_player_handedness", _analysis_player_handedness),
 ]
 
 

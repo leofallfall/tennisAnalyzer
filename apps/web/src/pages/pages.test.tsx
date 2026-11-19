@@ -14,6 +14,8 @@ const baseAnalysis: Analysis = {
   video_relation: 'single',
   stroke_filter: 'both',
   focus: null,
+  dominant_hand: null,
+  backhand: null,
   status: 'created',
   stage: null,
   progress: 0,

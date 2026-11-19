@@ -183,6 +183,9 @@ export type AnalysisMode = 'session' | 'single_stroke'
 export type AnalysisStatus = 'created' | 'queued' | 'running' | 'completed' | 'failed'
 export type VideoRelation = 'single' | 'same_stroke_multi_angle' | 'different_strokes'
 export type StrokeFilter = 'forehand' | 'backhand' | 'both'
+/** Declared by the user, never inferred (M1.10). null = not provided. */
+export type DominantHand = 'right' | 'left'
+export type BackhandStyle = 'one_handed' | 'two_handed'
 export type ViewAngle =
   'side_forehand' | 'side_backhand' | 'front' | 'behind' | 'diagonal' | 'unknown'
 
@@ -240,6 +243,8 @@ export interface Analysis extends AnalysisStatusInfo {
   video_relation: VideoRelation
   stroke_filter: StrokeFilter
   focus: string | null
+  dominant_hand: DominantHand | null
+  backhand: BackhandStyle | null
   created_at: string
   videos: AnalysisVideo[]
   results: AnalysisResults | null
@@ -259,6 +264,8 @@ export interface AnalysisCreate {
   video_relation?: VideoRelation
   stroke_filter?: StrokeFilter
   focus?: string
+  dominant_hand?: DominantHand | null
+  backhand?: BackhandStyle | null
 }
 
 export interface Capability {

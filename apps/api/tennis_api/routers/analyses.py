@@ -84,6 +84,8 @@ def _to_out(a: Analysis, settings: Settings) -> AnalysisOut:
         video_relation=a.video_relation,
         stroke_filter=a.stroke_filter,
         focus=a.focus,
+        dominant_hand=a.dominant_hand,
+        backhand=a.backhand,
         created_at=a.created_at,
         videos=videos,
         results=redact(a.results, settings) if a.results is not None else None,
@@ -130,6 +132,8 @@ def create_analysis(body: AnalysisCreate, db: DbDep, settings: SettingsDep) -> A
         video_relation=body.video_relation.value,
         stroke_filter=body.stroke_filter.value,
         focus=body.focus,
+        dominant_hand=body.dominant_hand.value if body.dominant_hand else None,
+        backhand=body.backhand.value if body.backhand else None,
         status=AnalysisStatus.CREATED.value,
         progress=0.0,
     )

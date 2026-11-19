@@ -1,4 +1,10 @@
-import type { AnalysisMode, VideoRelation, ViewAngle } from '@tpa/contracts'
+import type {
+  AnalysisMode,
+  BackhandStyle,
+  DominantHand,
+  VideoRelation,
+  ViewAngle,
+} from '@tpa/contracts'
 import { Crosshair, FileVideo, Layers, Loader2, Upload, X } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -11,6 +17,7 @@ import { Input, Label, Select, Textarea } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { api, ApiError, uploadVideo } from '@/lib/api'
 import { formatBytes } from '@/lib/format'
+import { loadProfile } from '@/lib/profile'
 import { cn } from '@/lib/utils'
 
 const VIEW_OPTIONS: { value: ViewAngle; label: string }[] = [
@@ -36,6 +43,11 @@ export function NewAnalysisPage() {
   const [relation, setRelation] = useState<VideoRelation | ''>('')
   const [title, setTitle] = useState('')
   const [focus, setFocus] = useState('')
+  // Pre-filled from the player profile (this browser); sent only when chosen, never guessed.
+  const [dominantHand, setDominantHand] = useState<DominantHand | ''>(
+    () => loadProfile().dominantHand,
+  )
+  const [backhand, setBackhand] = useState<BackhandStyle | ''>(() => loadProfile().backhand)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState<ApiError | null>(null)
@@ -67,6 +79,8 @@ export function NewAnalysisPage() {
         focus: focus || undefined,
         videos: ids.map((id, i) => ({ video_id: id, camera_view: files[i]!.view })),
         video_relation: needsRelation ? (relation as VideoRelation) : 'single',
+        dominant_hand: dominantHand || null,
+        backhand: backhand || null,
       })
       await api.startAnalysis(analysis.id)
       navigate(`/analyses/${analysis.id}`)
@@ -217,6 +231,30 @@ export function NewAnalysisPage() {
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="title">Title (optional)</Label>
                   <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="dominant-hand">Player&apos;s dominant hand (optional)</Label>
+                  <Select
+                    id="dominant-hand"
+                    value={dominantHand}
+                    onChange={(e) => setDominantHand(e.target.value as DominantHand | '')}
+                  >
+                    <option value="">Not specified</option>
+                    <option value="right">Right</option>
+                    <option value="left">Left</option>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="backhand-style">Player&apos;s backhand (optional)</Label>
+                  <Select
+                    id="backhand-style"
+                    value={backhand}
+                    onChange={(e) => setBackhand(e.target.value as BackhandStyle | '')}
+                  >
+                    <option value="">Not specified</option>
+                    <option value="one_handed">One-handed</option>
+                    <option value="two_handed">Two-handed</option>
+                  </Select>
                 </div>
                 {mode === 'single_stroke' && (
                   <div className="flex flex-col gap-1.5 sm:col-span-2">

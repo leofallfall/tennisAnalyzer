@@ -70,6 +70,21 @@ class StrokeFilter(StrEnum):
     BOTH = "both"
 
 
+class DominantHand(StrEnum):
+    """Declared by the user; never inferred from video (M1.10). Needed by M2 to tell
+    forehand from backhand."""
+
+    RIGHT = "right"
+    LEFT = "left"
+
+
+class BackhandStyle(StrEnum):
+    """Declared by the user; never inferred from video (M1.10)."""
+
+    ONE_HANDED = "one_handed"
+    TWO_HANDED = "two_handed"
+
+
 class AnalysisStatus(StrEnum):
     CREATED = "created"
     QUEUED = "queued"
@@ -108,6 +123,12 @@ class Analysis(Base):
     video_relation: Mapped[str] = mapped_column(String(48))
     stroke_filter: Mapped[str] = mapped_column(String(16), default=StrokeFilter.BOTH.value)
     focus: Mapped[str | None] = mapped_column(Text, doc="Technical aspect to investigate")
+    dominant_hand: Mapped[str | None] = mapped_column(
+        String(8), doc="DominantHand declared at creation; NULL = not provided, never inferred"
+    )
+    backhand: Mapped[str | None] = mapped_column(
+        String(16), doc="BackhandStyle declared at creation; NULL = not provided"
+    )
     status: Mapped[str] = mapped_column(String(16), default=AnalysisStatus.CREATED.value)
     stage: Mapped[str | None] = mapped_column(String(64))
     progress: Mapped[float] = mapped_column(Float, default=0.0)

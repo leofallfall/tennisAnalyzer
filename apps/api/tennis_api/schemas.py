@@ -7,7 +7,14 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from tennis_api.models import AnalysisMode, AnalysisStatus, StrokeFilter, VideoRelation
+from tennis_api.models import (
+    AnalysisMode,
+    AnalysisStatus,
+    BackhandStyle,
+    DominantHand,
+    StrokeFilter,
+    VideoRelation,
+)
 from tennis_cv.capabilities import Capability
 from tennis_cv.comparison.base import ViewAngle
 from tennis_cv.strokes.base import StrokeType
@@ -82,6 +89,14 @@ class AnalysisCreate(ApiModel):
     )
     stroke_filter: StrokeFilter = StrokeFilter.BOTH
     focus: str | None = Field(default=None, max_length=2000)
+    dominant_hand: DominantHand | None = Field(
+        default=None,
+        description="Declared by the user (e.g. from the player profile). Null when not "
+        "provided; never inferred.",
+    )
+    backhand: BackhandStyle | None = Field(
+        default=None, description="Declared by the user. Null when not provided."
+    )
 
     @model_validator(mode="after")
     def _relation(self) -> AnalysisCreate:
@@ -135,6 +150,8 @@ class AnalysisOut(AnalysisStatusOut):
     video_relation: VideoRelation
     stroke_filter: StrokeFilter
     focus: str | None
+    dominant_hand: DominantHand | None = None
+    backhand: BackhandStyle | None = None
     created_at: datetime
     videos: list[AnalysisVideoOut]
     results: dict[str, Any] | None = Field(

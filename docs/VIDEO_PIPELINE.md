@@ -113,9 +113,14 @@ Output `pose.json` (`PoseSequence`): 33 normalised keypoints per frame with visi
 presence; frames without a person have `detected=false`. Measured on CPU (4 vCPU):
 ≈ 20 ms/frame for 576×768.
 
-**Stored precision (M1.10)**: x/y 5 decimals (0.02 px on a 1920 px side), z 4,
-visibility/presence 3; timestamps exact (`frame / fps`). Projected joint angles change by
-< 0.05° (tested). Size, 1 min at 30 fps of synthetic keypoints: ≈ 9.4 MB → ≈ 5.7 MB on disk;
+**Stored precision (M1.10)**: applied only when `pose.json` is written
+(`pose/models.py: for_storage`); the estimator, the pose summary and the overlay use full
+precision. x/y 5 decimals (0.02 px on a 1920 px side), z 4, visibility/presence 3 decimals
+**rounded down** (a stored score is never above the estimator's, so the `≥ 0.6`
+observability gate cannot pass because of rounding); timestamps exact (`frame / fps`).
+This is numeric storage precision, not the physical accuracy of MediaPipe, which errs by
+several pixels. Measurements computed later from `pose.json` (Evidence Pack) use the stored
+values: projected joint angles change by < 0.05° (tested). Size, 1 min at 30 fps of synthetic keypoints: ≈ 9.4 MB → ≈ 5.7 MB on disk;
 the API gzip-compresses JSON (≈ 1.1 MB transferred). The browser still loads the whole file:
 windowed/columnar loading is on the roadmap. Real pose data still has to be measured (M1.11).
 

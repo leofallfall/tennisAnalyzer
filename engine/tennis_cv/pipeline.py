@@ -22,7 +22,7 @@ from tennis_cv import __version__
 from tennis_cv.common import StrictModel
 from tennis_cv.errors import TennisCVError, VideoValidationError
 from tennis_cv.pose.base import PoseEstimator
-from tennis_cv.pose.models import PoseFrame, PoseSequence, PoseSummary, summarize
+from tennis_cv.pose.models import PoseFrame, PoseSequence, PoseSummary, for_storage, summarize
 from tennis_cv.pose.overlay import OverlayWriter, annotate_frame_info, draw_skeleton
 from tennis_cv.quality.assessment import QualityReport, assess_quality
 from tennis_cv.quality.metrics import FrameQuality, measure_frame
@@ -194,7 +194,8 @@ def run_video_processing(
 
     progress("writing_results", 0.95)
     t0 = time.perf_counter()
-    (out / POSE_NAME).write_text(seq.model_dump_json())
+    # Reduced storage precision applies to the file only (M1.10, pose/models.py).
+    (out / POSE_NAME).write_text(for_storage(seq).model_dump_json())
     quality = assess_quality(
         proxy_meta, frame_quality, pose_detection_rate=pose_summary.detection_rate
     )

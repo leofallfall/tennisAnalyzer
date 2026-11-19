@@ -4,6 +4,11 @@ The engine already names files by base name in new errors and reports. This modu
 the safety net for everything else: rows and ``report.json`` files written before the
 fix, exception messages from third-party code (e.g. ``FileNotFoundError``) and stderr.
 Known server directories are replaced by short placeholders such as ``<storage>``.
+
+Limit: only the absolute paths of these known roots (storage, models, application,
+home) are replaced. A path outside them that appears in a third-party message, e.g.
+``/var/tmp/x/original.mp4``, is returned unchanged. Engine errors no longer contain such
+paths, but this module cannot recognise arbitrary paths.
 """
 
 from __future__ import annotations
@@ -30,7 +35,9 @@ def _roots(settings: Settings) -> list[tuple[str, str]]:
     out: dict[str, str] = {}
     for path, label in pairs:
         for variant in {str(path), str(path.resolve()), os.path.abspath(path)}:
-            if len(variant) > 1:  # never replace a bare "/"
+            # Only absolute paths: a relative TPA_STORAGE_DIR such as "storage" would
+            # otherwise replace the plain word in messages. Never a bare "/".
+            if os.path.isabs(variant) and len(variant) > 1:
                 out.setdefault(variant, label)
     # Longest first, so <storage> wins over <app> or <home> when nested.
     return sorted(out.items(), key=lambda kv: len(kv[0]), reverse=True)

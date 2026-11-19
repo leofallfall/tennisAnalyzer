@@ -172,3 +172,17 @@ def test_scrub_paths_and_redact() -> None:
     settings = Settings(storage_dir=Path("/srv/tpa/storage"), database_url="", cors_origins=[])
     value = {"x": ["/srv/tpa/storage/videos/1/original.mp4", 3], "y": ("ok",)}
     assert redact(value, settings) == {"x": ["<storage>/videos/1/original.mp4", 3], "y": ("ok",)}
+
+
+def test_redaction_with_relative_storage_dir_keeps_plain_words() -> None:
+    """A relative TPA_STORAGE_DIR must not turn the word "storage" into a placeholder."""
+    settings = Settings(storage_dir=Path("storage"), database_url="", cors_origins=[])
+    absolute = str(Path("storage").resolve() / "videos" / "a.mp4")
+    out = redact(f"Local storage is full; see {absolute}", settings)
+    assert out == "Local storage is full; see <storage>/videos/a.mp4"
+
+
+def test_paths_outside_known_roots_are_not_redacted() -> None:
+    """Documented limit: only known roots are recognised."""
+    settings = Settings(storage_dir=Path("/srv/tpa/storage"), database_url="", cors_origins=[])
+    assert redact("see /var/tmp/x/original.mp4", settings) == "see /var/tmp/x/original.mp4"

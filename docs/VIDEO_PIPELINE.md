@@ -170,5 +170,8 @@ and Python tracebacks go to the server log only (`internal_error` carries an `er
 find them). `tennis_api/redaction.py` replaces known server directories (`<storage>`,
 `<models>`, `<app>`, `<home>`) in every error body, analysis status/result and served
 `report.json`, which also covers rows written before M1.10. System Status lists the last
-5 failed analyses. Known exception: the AI hand-off command shows the Evidence Pack path the
+5 failed analyses. **Limit:** redaction recognises only the absolute paths of the known
+roots; a path outside them in a third-party message (e.g. `/var/tmp/x/original.mp4`) is
+returned unchanged (tested). A relative `TPA_STORAGE_DIR` is resolved to its absolute path
+first, so plain words such as "storage" are never replaced. Known exception: the AI hand-off command shows the Evidence Pack path the
 user has to type in Claude Code (absolute only when storage is outside the repository).

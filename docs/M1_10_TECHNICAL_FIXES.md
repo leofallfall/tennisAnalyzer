@@ -147,9 +147,10 @@ Priorità e milestone sono riportate anche in `docs/ROADMAP.md`, sezione "Open t
   Mappatura temporale, dimensione di `pose.json` e runtime vanno ricontrollati in M1.11.
 - **Cambio di soggetto non rilevato.** Con `num_poses=1` lo scheletro può passare a un'altra
   persona senza avviso. In M1.11 il giocatore si annota a mano e si registrano i cambi.
-- **Redazione basata su radici note.** Copre storage, modelli, repository e home. Un
-  percorso esterno a queste radici in un messaggio di terze parti non verrebbe accorciato;
-  gli errori del motore non ne producono più. Il campo `platform` di `system/info` resta e
+- **Redazione basata su radici note.** Copre solo i percorsi assoluti di storage, modelli,
+  repository e home. Un percorso esterno a queste radici in un messaggio di terze parti,
+  per esempio `/var/tmp/x/original.mp4`, resta visibile (verificato da un test). Gli errori
+  del motore non ne producono più. Il campo `platform` di `system/info` resta e
   mostra il sistema operativo e il kernel.
 - **Eccezione voluta.** Il comando di hand-off AI mostra il percorso del pacchetto da
   digitare in Claude Code. È assoluto solo se lo storage è fuori dal repository.

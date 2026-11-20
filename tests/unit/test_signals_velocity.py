@@ -100,7 +100,9 @@ def test_holes_and_segment_boundaries_are_not_crossed() -> None:
     assert np.all(np.isnan(s3.derivative))
 
 
-def _poses(n: int, hip_vis: float = 0.9, wrist_vis: float = 0.9) -> PoseSequence:
+def _poses(
+    n: int, hip_vis: float = 0.9, wrist_vis: float = 0.9, wrist_seq: Any = None
+) -> PoseSequence:
     frames = []
     for k in range(n):
         x = 100.0 + 6.0 * k  # 6 px per frame = 180 px/s at 30 fps
@@ -111,6 +113,8 @@ def _poses(n: int, hip_vis: float = 0.9, wrist_vis: float = 0.9) -> PoseSequence
             "right_hip": (330.0, 700.0, hip_vis),
             "right_wrist": (x, 600.0, wrist_vis if 20 <= k < 25 else 0.9),
         }
+        if wrist_seq is not None:
+            pts["right_wrist"] = (x, 600.0, float(wrist_seq[k]))
         kps = [
             Keypoint(name=nm, x=px / 720, y=py / 1280, visibility=v, presence=v)
             for nm, (px, py, v) in pts.items()
@@ -159,3 +163,29 @@ def test_missing_scale_keeps_pixel_speed() -> None:
     assert np.all(np.isnan(vel.speed_2d_torso_per_s))
     no_scale = keypoint_velocity(poses, tb, "right_wrist")
     assert no_scale.scale_state is None and np.all(np.isnan(no_scale.speed_2d_torso_per_s))
+    # the scale never changes the velocity state or the pixel values
+    assert vel.state == no_scale.state
+    np.testing.assert_array_equal(vel.speed_2d_px_per_s, no_scale.speed_2d_px_per_s)
+
+
+def test_low_in_window_can_be_rebuilt_from_exposed_fields() -> None:
+    """The window of each estimate follows from run, window_samples and the edge rule, so
+    the quality of every sample used can be recovered (here: the LOW count)."""
+    rng = np.random.default_rng(3)
+    vis = rng.choice([0.9, 0.45, 0.2], size=60, p=[0.6, 0.3, 0.1])
+    poses = _poses(60, wrist_seq=vis)
+    vel = keypoint_velocity(poses, build_timebase(poses), "right_wrist")
+    assert set(vel.state) == set(VelocityState)  # all four states occur
+    sx = vel.positions.x
+    w, half = sx.window_samples, sx.window_samples // 2
+    for i, st in enumerate(vel.state):
+        if st not in (VelocityState.VALID, VelocityState.EDGE):
+            assert vel.low_in_window[i] == 0
+            continue
+        members = np.flatnonzero(sx.run == sx.run[i])
+        r0, r1 = int(members[0]), int(members[-1]) + 1
+        start = min(max(i - half, r0), r1 - w)
+        assert (start == i - half) == (st is VelocityState.VALID)
+        used = vel.quality[start : start + w]
+        assert KeypointQuality.UNRELIABLE not in used
+        assert vel.low_in_window[i] == used.count(KeypointQuality.LOW)

@@ -342,10 +342,27 @@ length (§5), a 2D scale normalisation; pixel values are never replaced.
 | `unreliable` | NaN | position sample not usable (unreliable quality) |
 | `too_short` | NaN | run shorter than the window |
 
-`low_but_usable` samples are inside runs, so they get a velocity like `good` ones; their
-own `quality` is kept and `low_in_window` says how many LOW samples each slope used.
-Consumers decide whether to accept them (rule from the review of #3: measures sensitive to
-the relative position of the hands use GOOD only).
+`edge` values are finite but are **not** equivalent to `valid` ones (noise below): nothing
+in the module merges the two, and a consumer that wants centred slopes only must filter on
+`state`. Which states a consumer accepts is decided where it is used (M2.3), not here.
+
+**LOW samples in the derivative.** The fit of sample *i* uses exactly `window_samples`
+consecutive samples of *i*'s run: every usable sample (`good` or `low_but_usable`, finite
+coordinates) of one segment, never an `unreliable` one (they break runs). The window starts
+at `min(max(i − half, run start), run end − window_samples)`; `valid` ⇔ it starts at
+`i − half`. `quality[i]` is the quality of sample *i* only; `low_in_window[i]` is the number
+of `low_but_usable` samples among the ones the fit used (0 when there is no value). The
+window is not stored, but it follows from `positions.x.run`, `window_samples` and the rule
+above, so the quality of every sample behind an estimate can be rebuilt (test
+`test_low_in_window_can_be_rebuilt_from_exposed_fields`). LOW samples have the same weight
+as GOOD ones in the fit (no weighting by visibility). Consumers decide whether to accept
+estimates with `low_in_window > 0` (rule from the review of #3: measures sensitive to the
+relative position of the hands use GOOD only).
+
+**Pixel vs normalised speed.** `state` describes the pixel velocity only and is the same with
+or without a scale (test). The scale has its own `scale_state` (`None` when no scale was
+given); `speed_2d_torso_per_s` has a value only where the velocity has one **and**
+`scale_state` is `ok`. The two states are kept separate, not merged into one.
 
 **Noise** (white noise σ = 1 px on positions, 30 fps, 7-point quadratic fit, measured):
 centred slope 5.7 px/s (theory σ / (Δt·√28)); at a run edge 8.7, 14.3 and 20.4 px/s on the
@@ -368,15 +385,23 @@ the sample with the **largest** `speed_2d_px_per_s` within ±15 samples (±0.5 s
 labelled frame. This is a look at the signal, not peak or impact detection: the window is
 centred on a label we already know.
 
-| | Forehand (19) | Backhand (15) |
+Denominators: 34 labelled impacts (19 forehands, 15 backhands); 33 with a value. The
+proportions below are out of the impacts **with a value**; the one without a value is
+reported separately, not counted as a miss.
+
+| | Forehand | Backhand |
 |---|---|---|
-| With a speed in the window | 19 | 14 (img4912_m3 frame 700: none) |
-| Max within ±2 frames of the label | 9 | 2 |
-| Max within ±5 frames | 17 | 7 |
+| Labelled | 19 | 15 |
+| No speed in the window (not evaluated) | 0 | 1 (img4912_m3 frame 700: no velocity value in the window) |
+| Evaluated (with a value) | 19 | 14 |
+| Max within ±2 frames of the label | 9 / 19 | 2 / 14 |
+| Max within ±5 frames | 17 / 19 | 7 / 14 |
 | Median offset (max − label) | +1 frame | +4 frames |
 
-Overall 11/33 within ±2 frames, 24/33 within ±5. At the maximum: 29 `valid`, 4 `edge`;
-29 `good`, 4 `low_but_usable`. Median `speed_2d_torso_per_s` at the maximum: 7.3 torso/s.
+Overall 11/33 evaluated within ±2 frames, 24/33 within ±5 (34 labelled, 1 not evaluated).
+At the maximum: 29 `valid`, 4 `edge`; 29 `good`, 4 `low_but_usable`; the table counts all
+of them together, `edge` and LOW included. Median `speed_2d_torso_per_s` at the maximum:
+7.3 torso/s.
 
 Limits of this look: one player, 34 impacts, labels read by eye (±1–2 frames); the maximum
 in a ±0.5 s window is not necessarily the impact (follow-through, the other stroke phase);

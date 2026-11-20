@@ -1,7 +1,8 @@
 # M2.2 — Signal processing (pose signals)
 
 Status (2026-11-20): **intervention 1 (time base) merged; intervention 2 (temporal
-smoothing of positions) done; intervention 3 (two quality levels, LOW from 0.4) done** (next
+smoothing of positions) done; intervention 3 (two quality levels, LOW from 0.4) done; intervention 4 (torso scale)
+done** (next
 steps: ADR-019); derivatives (velocities,
 accelerations), peaks, body-frame normalisation and the other signals are **not
 implemented**. Each intervention
@@ -252,9 +253,70 @@ shoulders):
 Per video, right wrist good 41–78 %, left wrist 26–60 %; side-view clips (IMG_4912,
 Timeline_1/2) have few low-score right-wrist samples.
 
-## 5. Not implemented yet (next interventions, after review)
+## 5. Torso scale (`tennis_cv.signals.scale`, intervention 4)
+
+A **2D scale normalisation** of the image, not a 3D measurement: later distances and
+speeds are expressed in *torso lengths* so that they do not depend on the distance from
+the camera. No body-specific constant is involved.
+
+```python
+sc = torso_scale(poses, timebase)  # TorsoScale
+sc.length_px  # stabilised torso length per sample (NaN = missing)
+sc.to_torso_units(distance_px)  # NaN where the scale is missing; pixels untouched
+```
+
+* **Measurement:** `|mid-shoulder − mid-hip|` in pixels from the raw positions, only when
+  all four keypoints are `good` (≥ 0.5). `low_but_usable` and `unreliable` samples do not
+  measure the torso. Instantaneous values are kept in `measured_px`.
+* **Stabilisation:** rolling median over `window_s` = 1 s of real time, centred, inside
+  the time-base segment. It removes per-frame noise, isolated wrong hips/shoulders and the
+  brief shortening of the projected torso during a stroke (~0.3 s), and follows changes
+  of camera distance slower than about half a second; a linear change is followed with
+  no lag (test). Faster changes are smoothed over ~0.5 s. The window is **centred, so it
+  uses future samples**: suitable for offline session analysis, **not causal**, not usable
+  as is for real-time analysis.
+* **Missing:** fewer than `min_fraction` (50 %) of the samples of a *full* window with a
+  measurement → `insufficient`, `length_px` NaN, every normalised value NaN. At 30 fps:
+  ≥ 16 of 31. Consequences (tested): a segment of 15 samples never gets a scale, one of
+  16 gets it on every sample; at a segment edge only half a window (16 samples) is
+  available, so one missing measurement there removes the scale on the edge sample.
+* **Spread:** `relative_spread` = MAD / median in the window: an indicator of
+  **geometric dispersion only**, not an autonomous measure of reliability nor of correct
+  player identification. A scale can be stable and belong to the wrong person (§5.1,
+  IMG_5098_1). Reported for later use, not used to reject (no validated threshold).
+
+Synthetic checks (`tests/unit/test_signals_scale.py`): ±3 px noise and 10 % wrong hips →
+error < 2 %; a 200 → 300 px approach in 3 s is followed exactly; hips hidden for 2 s →
+no scale and no normalised value beyond half a window; LOW hips never measure; no mixing
+across segments.
+
+### 5.1 Behaviour on the 13 videos (not a validation)
+
+| | Range over the videos |
+|---|---|
+| Samples with a measurement | 59–89 % (side-view Timeline_1/2: 59–64 %) |
+| Samples with a scale | 58–89 % |
+| Median torso length | 46–98 px (side and far views smaller) |
+| Median relative spread | 0.022–0.032 |
+| Samples whose scale changes > 50 % in 1 s | 0–1.8 % per video |
+
+The large 1-s changes are mostly **the pose jumping to another person** (e.g. IMG_5098_1
+frame ~1720: 22 px, the far opponent, then 101 px, the player). The scale is then
+consistent but for the wrong person. Identity is not handled here (M2.5); the spread is
+sometimes, not always, high around such switches. Within the player's own sequences the
+spread stays around 2–3 %.
+
+### 5.2 Limits
+
+* Projected torso length changes with posture (bending, trunk rotation, side view): the
+  1-s median attenuates this, it does not remove it.
+* A wrong but `good` shoulder or hip for longer than half a window moves the scale.
+* Person switches are not detected (M2.5).
+* Window and `min_fraction` are general starting values, not validated.
+
+## 6. Not implemented yet (next interventions, after review)
 
 Derivatives (velocity, acceleration) with explicit reliability states, scale normalisation
 (`speed_2d_torso_per_s` is a 2D scale normalisation by torso length per second, not a 3D
-speed), per-player hand/backhand configuration for wrist selection (ADR-019: #4 torso
-scale, #5 apparent 2D speed, #6 complementary signals; peaks move to M2.3).
+speed), per-player hand/backhand configuration for wrist selection (ADR-019: #5 apparent
+2D speed, #6 complementary signals; peaks move to M2.3).

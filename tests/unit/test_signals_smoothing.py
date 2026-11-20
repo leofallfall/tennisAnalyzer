@@ -213,8 +213,11 @@ def test_quality_levels() -> None:
     vis = np.array([0.9, 0.5, 0.49, 0.3, 0.1, np.nan, 0.9])
     two = SmoothingParams(usable_visibility=0.3)
     assert classify_quality(x, x, vis, two) == (G, G, LO, LO, UN, UN, UN)
-    # provisional default: usable == good, so no sample is LOW
-    assert classify_quality(x, x, vis) == (G, G, UN, UN, UN, UN, UN)
+    # provisional default: usable 0.4
+    assert classify_quality(x, x, vis) == (G, G, LO, UN, UN, UN, UN)
+    # usable == good: no sample is LOW
+    one = SmoothingParams(usable_visibility=0.5)
+    assert classify_quality(x, x, vis, one) == (G, G, UN, UN, UN, UN, UN)
     with pytest.raises(ValueError):
         SmoothingParams(usable_visibility=0.6)
 
@@ -242,7 +245,7 @@ def test_low_quality_end_to_end_keeps_raw_and_quality() -> None:
     frames = [
         PoseFrame(
             frame_index=k, timestamp_s=k / FPS, detected=True,
-            keypoints=[_kp("left_wrist", 0.3 + 0.002 * k, 0.4, 0.4 if 12 <= k < 15 else 0.9)],
+            keypoints=[_kp("left_wrist", 0.3 + 0.002 * k, 0.4, 0.35 if 12 <= k < 15 else 0.9)],
         )
         for k in range(n)
     ]  # fmt: skip
@@ -257,11 +260,11 @@ def test_low_quality_end_to_end_keeps_raw_and_quality() -> None:
     sm = smooth_keypoint(raw, two)
     assert sm.x.run.max() == 0 and np.all(np.isfinite(sm.x.smoothed[12:15]))
     assert sm.x.low_in_window[13] == 3
-    # default (usable = good = 0.5): the same samples are unreliable and split the run
+    # default (usable 0.4): the same samples are unreliable and split the run
     raw_d = extract_keypoint(poses, tb, "left_wrist")
     sm_d = smooth_keypoint(raw_d)
     assert raw_d.quality[12:15] == (UN,) * 3 and sm_d.x.run.max() == 1
     assert np.all(np.isnan(sm_d.x.smoothed[12:15]))
     # raw coordinates and visibility are kept whatever the quality
     np.testing.assert_array_equal(raw.x_px, raw_d.x_px)
-    np.testing.assert_array_equal(raw_d.visibility[12:15], [0.4, 0.4, 0.4])
+    np.testing.assert_array_equal(raw_d.visibility[12:15], [0.35, 0.35, 0.35])

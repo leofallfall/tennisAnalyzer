@@ -1,7 +1,7 @@
 # M2.2 — Signal processing (pose signals)
 
 Status (2026-11-20): **intervention 1 (time base) merged; intervention 2 (temporal
-smoothing of positions) done; intervention 3 (two quality levels) under review** (next
+smoothing of positions) done; intervention 3 (two quality levels, LOW from 0.4) done** (next
 steps: ADR-019); derivatives (velocities,
 accelerations), peaks, body-frame normalisation and the other signals are **not
 implemented**. Each intervention
@@ -201,9 +201,10 @@ The quality is kept per sample in `RawKeypointSignal.quality`, next to raw coord
 and visibility; the smoothing state stays in `SmoothedSignal.state`. A LOW sample changes
 the label, not the fit: the smoothed values are those obtained treating it as good.
 
-**Choice of `usable_visibility` (provisional default = 0.5, i.e. LOW is empty).** The only
-ground truth available is the M2.1 human check of the drawn hitting (right) wrist at the
-impact frame (`overlay_wrist`, 30 of 35 checked):
+**Choice of `usable_visibility`: provisional 0.4** (single player, not validated).
+
+*Evidence 1, M2.1 impact check* (`overlay_wrist`, drawn hitting right wrist at the impact
+frame, 30 of 35 checked):
 
 | Right-wrist score at impact | On the hand | Elsewhere | Not drawn / missing |
 |---|---|---|---|
@@ -211,29 +212,45 @@ impact frame (`overlay_wrist`, 30 of 35 checked):
 | 0.35–0.5 | 1 (0.353) | 6 (0.383–0.497) | 1 (0.484) |
 | < 0.35 | 0 | 2 | 2 |
 
-So below 0.5 the drawn wrist was on the hand 1 time in 12. All 12 are backhands with the
-right hand hidden behind the body, so this sample says little about low scores in other
-situations, but it gives no support to any lower threshold. A second, indirect check does
-not help either: the residual between raw and smoothed positions is almost the same in
-every visibility band (median 0.016–0.036 shoulder widths), because VIDEO-mode tracking
-keeps even wrong positions smooth; temporal coherence cannot separate right from wrong.
-Hence the default keeps LOW empty, documented as provisional. The mechanism is in place
-and the value is a parameter: choosing a lower one needs targeted checks of low-score
-wrists (e.g. the non-hitting wrist on forehands).
+All 12 below 0.5 are two-handed backhands with the right hand hidden behind the body.
+
+*Evidence 2, targeted check (2026-11-20).* 30 wrists with scores 0.2–0.5 (15 right, 15
+left, 5 per band and wrist), from 12 videos, ≥ 0.5 s away from the labelled impacts,
+judged by the developer on crops (sheet and script in the project files, not in git):
+
+| Score band | On the hand | Wrong | Hand hidden (not judgeable) |
+|---|---|---|---|
+| 0.4–0.5 | 7 | 1 (left/right swapped) | 2 |
+| 0.3–0.4 | 4 | 2 (one "between the two hands") | 4 |
+| 0.2–0.3 | 2 (+1 "right or hidden") | 1 (on the opponent) | 6 |
+
+*Reading.* In ordinary play the 0.4–0.5 band is mostly on the hand (7 of 8 judgeable);
+below 0.4 errors and hidden hands grow, and at 0.2–0.3 a keypoint can sit on another
+person. The hidden right hand at two-handed backhand impacts is wrong even in 0.4–0.5
+(0 of 5 in Evidence 1). Lower scores mostly mean "hand hidden": the position is then a
+guess, not an observation. Hence `usable_visibility = 0.4`: LOW samples are kept and
+marked, never presented as good. Consequences for later interventions: signals sensitive
+to a wrong wrist (distance between hands on two-handed backhands) should require GOOD
+samples or report `low_in_window`; the hitting-wrist choice for two-handed backhands stays
+the left wrist (M2.1).
+
+With 0.4 instead of 0.5, the hitting wrist at the 35 labelled impacts is unchanged (32
+with a value, 3 unreliable) while the ±10-sample windows with a value on every sample go
+from 23 to 29 of 35.
 
 **Distribution on the 13 videos** (share of time-base samples; "with value" = `smoothed`
 + `edge`; observed behaviour, not validation; ~23 % of samples have no pose at all, see
 shoulders):
 
-| | Good | Low @0.35 | Low @0.2 | With value @0.5 / @0.35 / @0.2 |
+| | Good | Low @0.4 (default) | Low @0.2 | With value @0.5 / @0.4 / @0.2 |
 |---|---|---|---|---|
-| Right wrist | 50.1 % | 8.7 % | 18.3 % | 49.0 / 57.4 / 66.9 % |
-| Left wrist | 38.0 % | 11.5 % | 23.9 % | 37.1 / 48.5 / 60.8 % |
+| Right wrist | 50.1 % | 5.8 % | 18.3 % | 49.0 / 54.7 / 66.9 % |
+| Left wrist | 38.0 % | 7.6 % | 23.9 % | 37.1 / 44.5 / 60.8 % |
 | Right shoulder | 77.3 % | 0 % | 0 % | 76.0 % at every threshold |
 | Left hip | 77.3 % | 0 % | 0 % | 75.9 % at every threshold |
 
 Per video, right wrist good 41–78 %, left wrist 26–60 %; side-view clips (IMG_4912,
-Timeline_1/2) have few low-score right-wrist samples (1.5–3.6 % at 0.35).
+Timeline_1/2) have few low-score right-wrist samples.
 
 ## 5. Not implemented yet (next interventions, after review)
 

@@ -16,6 +16,7 @@ from tennis_cv.signals import (
     TimeBaseParams,
     TimeBasis,
     build_timebase,
+    classify_intervals,
 )
 from tennis_cv.video.timemap import TimeMap, build_timemap
 
@@ -147,7 +148,7 @@ def test_missing_map_falls_back_to_unverified_proxy_times() -> None:
     ("change", "reason"),
     [
         ({"summary.proxy_fps": 25.0}, "proxy_fps"),
-        ({"summary.proxy_frame_count": 3, "proxy_to_source": [0, 1, 2]}, "covers 3"),
+        ({"summary.proxy_frame_count": 3, "proxy_to_source": [0, 1, 2]}, "map has 3 proxy frames"),
         ({"proxy_to_source": [0, 1, 1, 0, 2, 3, 4, 5]}, "non-decreasing"),
         ({"proxy_to_source": [0, 1, 2, 3, 4, 5, 6, 9]}, "outside"),
         ({"source_times_s": [0.0, 0.1, 0.05, 0.2, 0.3, 0.4, 0.5, 0.6]}, "strictly increasing"),
@@ -196,3 +197,71 @@ def test_rejects_unordered_pose_frames() -> None:
     poses.frames.reverse()
     with pytest.raises(ValueError):
         build_timebase(poses)
+
+
+# --- review fixes (M1, B1, B2, B3) ---
+
+
+def test_non_finite_values_are_never_regular() -> None:
+    """M1: NaN / inf in source times, pose timestamps or map fps make the map unusable;
+    a non-finite interval is INVALID (never regular) and starts a new segment."""
+    tm = build_timemap(_src([120] * 7), FPS)
+    for bad in (float("nan"), float("inf")):
+        times = list(tm.source_times_s)
+        times[3] = bad
+        tb = build_timebase(_poses(8), tm.model_copy(update={"source_times_s": times}))
+        assert tb.map_status is MapStatus.INCONSISTENT and not tb.verified
+        assert any("NaN or infinite" in p for p in tb.map_problems)
+        assert np.all(np.isfinite(tb.times_s)) and tb.irregular_count() == 0
+
+        poses = _poses(8)
+        poses.frames[2].timestamp_s = bad
+        tb = build_timebase(poses, tm)
+        assert tb.map_status is MapStatus.INCONSISTENT
+        assert any("timestamp_s" in p for p in tb.map_problems)
+
+        summary = tm.summary.model_copy(update={"proxy_fps": bad})
+        tb = build_timebase(_poses(8), tm.model_copy(update={"summary": summary}))
+        assert tb.map_status is MapStatus.INCONSISTENT
+
+        with pytest.raises(ValueError):
+            build_timebase(_poses(4).model_copy(update={"fps": bad}))
+
+    interval, status, segment = classify_intervals(
+        np.array([0.0, 1 / 30, np.nan, 3 / 30, 4 / 30, np.inf]), 1 / 30
+    )
+    assert status == (FST, R, IntervalStatus.INVALID, IntervalStatus.INVALID, R,
+                      IntervalStatus.INVALID)  # fmt: skip
+    assert segment.tolist() == [0, 0, 1, 2, 2, 3]
+    assert np.isnan(interval[2])
+
+
+def test_negative_frame_index_is_rejected() -> None:
+    """B1: a negative index would silently pick the last source frame."""
+    poses = _poses(8)
+    poses.frames[0].frame_index = -1
+    poses.frames[0].timestamp_s = -1 / FPS
+    with pytest.raises(ValueError, match="negative"):
+        build_timebase(poses, build_timemap(_src([120] * 7), FPS))
+    with pytest.raises(ValueError, match="negative"):
+        build_timebase(poses)
+
+
+def test_map_longer_than_pose_is_inconsistent() -> None:
+    """B2: a map of another (longer) video with the same fps is not accepted."""
+    tm = build_timemap(_src([120] * 19), FPS)
+    tb = build_timebase(_poses(8), tm)
+    assert tb.map_status is MapStatus.INCONSISTENT and tb.basis is TimeBasis.PROXY
+    assert any("map has 20 proxy frames" in p for p in tb.map_problems)
+
+
+def test_missing_map_still_reports_pose_timestamp_problems() -> None:
+    """B3: without a map the base stays proxy/unverified and the problem is listed."""
+    poses = _poses(8)
+    poses.frames[3].timestamp_s = 0.5
+    tb = build_timebase(poses)
+    assert tb.map_status is MapStatus.MISSING and tb.basis is TimeBasis.PROXY
+    assert not tb.verified
+    assert any("timestamp_s" in p for p in tb.map_problems)
+    assert tb.times_s[3] == pytest.approx(3 / FPS)
+    assert build_timebase(_poses(8)).map_problems == ()

@@ -22,10 +22,13 @@ Rules
   skipped is just a missing sample: it ends a segment only if the real interval between
   the samples around it is irregular.
 * **Map checks.** A map is used only if it is consistent with ``pose.json``: same proxy
-  frame count and rate, pose ``timestamp_s`` equal to ``frame_index / fps``, every proxy
-  frame mapped, source indices non-decreasing and in
-  range, source times strictly increasing. Otherwise it is ignored (``inconsistent``),
-  with the reasons. A map written before the exact-slot fix (commit 8df7dd3) passes these
+  frame count and rate, pose ``timestamp_s`` finite and equal to ``frame_index / fps``,
+  every proxy frame mapped, source indices non-decreasing and in range, source times
+  finite and strictly increasing. Otherwise it is ignored (``inconsistent``), with the
+  reasons. Without a map, pose timestamp problems are still listed in ``map_problems``.
+* **Rejected inputs.** ``fps`` not finite or <= 0, ``frame_stride`` < 1, negative or
+  unordered ``frame_index`` raise ``ValueError``: no time base can be built from them.
+* **Old maps.** A map written before the exact-slot fix (commit 8df7dd3) passes these
   checks and cannot be told apart from a correct one: regenerate old maps.
 
 This module never reads files and never changes artifacts; it only interprets them.
@@ -33,6 +36,7 @@ This module never reads files and never changes artifacts; it only interprets th
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import StrEnum
 from itertools import pairwise
@@ -63,6 +67,7 @@ class IntervalStatus(StrEnum):
     REGULAR = "regular"
     LONG = "long"  # real interval longer than max_interval_ratio x nominal
     SHORT = "short"  # real interval shorter than min_interval_ratio x nominal
+    INVALID = "invalid"  # interval not finite (NaN / inf): unusable, never regular
 
 
 @dataclass(frozen=True)
@@ -115,7 +120,24 @@ class TimeBase:
         return int(self.segment.max()) + 1 if self.segment.size else 0
 
     def irregular_count(self) -> int:
-        return sum(s in (IntervalStatus.LONG, IntervalStatus.SHORT) for s in self.interval_status)
+        return sum(s in _IRREGULAR for s in self.interval_status)
+
+
+_IRREGULAR = (IntervalStatus.LONG, IntervalStatus.SHORT, IntervalStatus.INVALID)
+
+
+def _pose_timestamp_problems(poses: PoseSequence) -> list[str]:
+    bad = [
+        f.frame_index
+        for f in poses.frames
+        if not math.isfinite(f.timestamp_s)
+        or abs(f.timestamp_s - f.frame_index / poses.fps) > 0.25 / poses.fps
+    ]
+    if not bad:
+        return []
+    return [
+        f"pose timestamp_s not finite or != frame_index/fps ({len(bad)} frames, first {bad[0]})"
+    ]
 
 
 def check_timemap(poses: PoseSequence, timemap: TimeMap) -> list[str]:
@@ -126,22 +148,23 @@ def check_timemap(poses: PoseSequence, timemap: TimeMap) -> list[str]:
     times = timemap.source_times_s
     if not poses.frames:
         return ["pose.json has no frames"]
-    proxy_count = poses.frames[-1].frame_index + 1
-    bad_ts = [
-        f.frame_index
-        for f in poses.frames
-        if abs(f.timestamp_s - f.frame_index / poses.fps) > 0.25 / poses.fps
-    ]
-    if bad_ts:
-        problems.append(f"pose timestamp_s differs from frame_index/fps (frame {bad_ts[0]})")
-    if abs(s.proxy_fps - poses.fps) > 1e-3 * max(poses.fps, 1.0):
+    if poses.frames[0].frame_index < 0:
+        problems.append("pose.json has negative frame_index")
+    last = poses.frames[-1].frame_index
+    problems += _pose_timestamp_problems(poses)
+    if not math.isfinite(s.proxy_fps) or abs(s.proxy_fps - poses.fps) > 1e-3 * max(poses.fps, 1.0):
         problems.append(f"map proxy_fps {s.proxy_fps} differs from pose fps {poses.fps}")
     if len(mapping) != s.proxy_frame_count:
         problems.append("proxy_to_source length differs from proxy_frame_count")
-    if s.proxy_frame_count < proxy_count:
+    # pose.json samples every frame_stride-th proxy frame from 0: its last frame index
+    # must be one of the last frame_stride frames of the map (stride 1: same length)
+    if not last < s.proxy_frame_count <= last + poses.frame_stride:
         problems.append(
-            f"map covers {s.proxy_frame_count} proxy frames, pose.json has {proxy_count}"
+            f"map has {s.proxy_frame_count} proxy frames, pose.json has {len(poses.frames)} "
+            f"(last frame {last}, stride {poses.frame_stride})"
         )
+    if not all(math.isfinite(t) for t in times):
+        problems.append("source_times_s contains NaN or infinite values")
     if len(times) != s.source_frame_count:
         problems.append("source_times_s length differs from source_frame_count")
     if mapping and (min(mapping) < 0 or max(mapping) >= len(times)):
@@ -153,6 +176,39 @@ def check_timemap(poses: PoseSequence, timemap: TimeMap) -> list[str]:
     return problems
 
 
+def classify_intervals(
+    times_s: FloatArray, nominal_s: float, params: TimeBaseParams | None = None
+) -> tuple[FloatArray, tuple[IntervalStatus, ...], IntArray]:
+    """Interval from the previous sample, its status and the segment id of each sample.
+
+    A non-finite interval (NaN / inf time) is ``INVALID``, never ``REGULAR``; like ``LONG``
+    and ``SHORT`` it starts a new segment."""
+    params = params or TimeBaseParams()
+    interval = np.full(times_s.size, np.nan)
+    interval[1:] = np.diff(times_s)
+    statuses: list[IntervalStatus] = []
+    segment = np.zeros(times_s.size, dtype=np.int64)
+    seg = 0
+    for i in range(times_s.size):
+        if i == 0:
+            st = IntervalStatus.FIRST
+        else:
+            ratio = interval[i] / nominal_s
+            if not math.isfinite(ratio):
+                st = IntervalStatus.INVALID
+            elif ratio > params.max_interval_ratio:
+                st = IntervalStatus.LONG
+            elif ratio < params.min_interval_ratio:
+                st = IntervalStatus.SHORT
+            else:
+                st = IntervalStatus.REGULAR
+            if st is not IntervalStatus.REGULAR:
+                seg += 1
+        statuses.append(st)
+        segment[i] = seg
+    return interval, tuple(statuses), segment
+
+
 def build_timebase(
     poses: PoseSequence,
     timemap: TimeMap | None = None,
@@ -160,9 +216,11 @@ def build_timebase(
 ) -> TimeBase:
     """Build the sample time base of ``poses`` (see module docstring)."""
     params = params or TimeBaseParams()
-    if poses.fps <= 0 or poses.frame_stride < 1:
-        raise ValueError("pose.json needs fps > 0 and frame_stride >= 1")
+    if not (math.isfinite(poses.fps) and poses.fps > 0) or poses.frame_stride < 1:
+        raise ValueError("pose.json needs a finite fps > 0 and frame_stride >= 1")
     frame_idx = np.array([f.frame_index for f in poses.frames], dtype=np.int64)
+    if frame_idx.size and frame_idx[0] < 0:
+        raise ValueError("pose.json frame indices must not be negative")
     if frame_idx.size and np.any(np.diff(frame_idx) <= 0):
         raise ValueError("pose.json frame indices must be strictly increasing")
     nominal = poses.frame_stride / poses.fps
@@ -173,6 +231,8 @@ def build_timebase(
         found = check_timemap(poses, timemap)
         status = MapStatus.INCONSISTENT if found else MapStatus.OK
         problems = tuple(found)
+    else:
+        problems = tuple(_pose_timestamp_problems(poses))
 
     source_frames: IntArray | None = None
     repeats = 0
@@ -191,27 +251,7 @@ def build_timebase(
         times = frame_idx.astype(np.float64) / poses.fps
         basis = TimeBasis.PROXY
 
-    interval = np.full(times.size, np.nan)
-    interval[1:] = np.diff(times)
-    statuses: list[IntervalStatus] = []
-    segment = np.zeros(times.size, dtype=np.int64)
-    seg = 0
-    for i in range(times.size):
-        if i == 0:
-            st = IntervalStatus.FIRST
-        else:
-            ratio = interval[i] / nominal
-            if ratio > params.max_interval_ratio:
-                st = IntervalStatus.LONG
-            elif ratio < params.min_interval_ratio:
-                st = IntervalStatus.SHORT
-            else:
-                st = IntervalStatus.REGULAR
-            if st is not IntervalStatus.REGULAR:
-                seg += 1
-        statuses.append(st)
-        segment[i] = seg
-
+    interval, statuses, segment = classify_intervals(times, nominal, params)
     return TimeBase(
         basis=basis,
         map_status=status,
@@ -221,7 +261,7 @@ def build_timebase(
         source_frames=source_frames,
         times_s=times,
         interval_s=interval,
-        interval_status=tuple(statuses),
+        interval_status=statuses,
         segment=segment,
         repeats_removed=repeats,
     )

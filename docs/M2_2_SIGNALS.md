@@ -21,7 +21,7 @@ a checked time and a per-interval status.
 | Input situation | `basis` | `map_status` | Behaviour |
 |---|---|---|---|
 | consistent `timemap.json` | `source` | `ok` | sample time = `source_times_s` of the source frame shown (original file timeline, 0 = first source frame); proxy repeats removed |
-| no map | `proxy` | `missing` | time = `frame_index / fps`; repeats cannot be seen; base is **unverified** |
+| no map | `proxy` | `missing` | time = `frame_index / fps`; repeats cannot be seen; base is **unverified**; pose `timestamp_s` problems still listed in `map_problems` |
 | map present but inconsistent | `proxy` | `inconsistent` | map ignored, reasons in `map_problems`; base is **unverified** |
 
 **Samples.** Every `pose.json` frame, detected or not (detection and visibility are the
@@ -34,16 +34,23 @@ constant `dt`). Status vs the nominal interval `frame_stride / fps`:
 * `regular`: `min_interval_ratio ≤ ratio ≤ max_interval_ratio` (defaults 0.5 / 1.5);
 * `long`: VFR pause, hole left by a repeat, missing stride sample;
 * `short`: two source frames very close (burst);
+* `invalid`: interval not finite (NaN / inf); never classified `regular`. The checks below
+  make it unreachable from validated inputs; it is a last guard in `classify_intervals`;
 * `first`: first sample.
 
-Every `long` / `short` interval starts a new **segment**. Later derivatives and local fits
+Every `long` / `short` / `invalid` interval starts a new **segment**. Later derivatives and local fits
 must stay inside one segment. A source frame the proxy skipped is only a missing sample:
 it splits a segment only if the real interval around it is irregular.
 
-**Map checks** (`check_timemap`): `proxy_fps` = pose `fps`; the map covers every pose frame;
+**Map checks** (`check_timemap`): `proxy_fps` finite and = pose `fps`; the map has exactly
+the proxy frames of `pose.json` (stride 1: same count; stride *s*: the last pose frame is
+one of the last *s* map frames), so a map of another, longer video is refused;
 `proxy_to_source` length = `proxy_frame_count`, non-decreasing, inside `source_times_s`;
-`source_times_s` length = `source_frame_count`, strictly increasing; pose `timestamp_s` =
-`frame_index / fps` (±¼ frame).
+`source_times_s` finite, length = `source_frame_count`, strictly increasing; pose
+`timestamp_s` finite and = `frame_index / fps` (±¼ frame).
+
+**Rejected inputs** (`ValueError`, no time base): `fps` not finite or ≤ 0,
+`frame_stride` < 1, negative or non-increasing `frame_index`.
 
 **Parameters** (`TimeBaseParams`) are general, not player-specific, and **not validated**:
 1.5 / 0.5 were chosen because the iPhone originals of M2.1 alternate 31.67 / 35.00 ms around
@@ -51,7 +58,10 @@ it splits a segment only if the real interval around it is irregular.
 
 ### 2.1 Check on the real M2.1 outputs (13 videos, regenerated maps)
 
-All 13 maps pass the consistency checks (`basis = source`).
+All 13 maps pass the consistency checks (`basis = source`), and `map_problems` is empty
+with and without the map. After the review fixes (NaN/inf, negative indices, map length,
+timestamps without map) the 39 time bases (13 videos × new map, old map, no map) are
+identical to those of the first version.
 
 | Video | Repeats removed | Irregular intervals | Segments | Real intervals |
 |---|---|---|---|---|

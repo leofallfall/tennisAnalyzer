@@ -14,6 +14,7 @@ from tennis_cv.signals.timebase import (
     TimeBasis,
     build_timebase,
     check_timemap,
+    classify_intervals,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "TimeBasis",
     "build_timebase",
     "check_timemap",
+    "classify_intervals",
 ]

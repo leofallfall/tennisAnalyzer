@@ -235,16 +235,20 @@ What this means for later milestones (observations on this player, not validated
 - Side view: only the stroke the player opens towards is observable. From the forehand side
   both arms are hidden on backhands (3/3 not drawn): arm metrics there are non-observable.
 - Shoulders and hips were usable at every impact.
-- **Timing:** three of the iPhone originals have container timestamps that alternate between
-  31.67 and 35.00 ms (±1.67 ms around 33.33 ms). Probably where the accumulated offset sits at
-  half a proxy frame, the fps filter repeats one source frame and skips the next (IMG_4893: 319
-  repeats, 318 skips, all between about 300 s and 332 s). On those proxy frames `pose.json`
-  shows the same pose twice and then a two-frame jump. The source itself has no gap; the
-  distortion comes from resampling. M2.2 must take sample times from `timemap.json`, not
-  from `frame / fps` (ADR-018). Only 1 of the 35 labelled windows contains such a repeat.
-- The report groups these clips as `cfr` (the container is CFR within tolerance) although
-  their proxies contain repeats: the `source_frame_rate` grouping does not reveal them; the
-  per-impact `repeated_proxy_frames` count does.
+- **Timing (corrected 2026-11-20).** The iPhone originals have container timestamps on a
+  1/600 s timescale that alternate between 31.67 and 35.00 ms (±1.67 ms around 33.33 ms):
+  the source has no gaps. `timemap.json` reports about 270–320 repeated and as many skipped
+  proxy frames in IMG_4893, IMG_5098 and IMG_5098_1, but **these are errors of the
+  reconstruction, not of the proxy**. Comparing proxy frames with the original frames
+  (IMG_4893, proxy frames 8950–10050) the proxy advances one source frame at a time except at
+  about 9 places, while the map points one source frame too late (≤ 33 ms) on 317 of those
+  1100 frames. Recomputing the same rule with exact integer timestamps matches 1095/1100
+  frames and gives 4 repeats in the whole clip instead of 319. Cause: `build_timemap` rounds
+  the 6-decimal `pts_time` as a float, and on this timescale many frames sit exactly half a
+  proxy frame from a slot boundary, where float error picks the wrong side. Until the map is
+  computed exactly, the `repeated_proxy_frames` counts of these clips (1 of 35 windows) and
+  their `duplicated_frames`/`dropped_frames` summaries are not reliable. An earlier version
+  of this section, and a comparison of poses on "repeated" frames built on it, were wrong.
 
 Other problems found: the overlay frame number is small and low-contrast on bright
 backgrounds (pipeline change, not in M2.1); edited exports (DaVinci, 24 fps, pillarboxed)

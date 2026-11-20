@@ -228,7 +228,8 @@ rates, ≥ 5 dev and ≥ 5 test clips from different sessions) would take months
   from algorithm parameters; new players and datasets can be added without rewriting the
   engine. No calibration system or multi-user features are added for this.
 - Signal processing must not treat proxy frames as equally spaced: sample times come from
-  `timemap.json`, repeated proxy frames are removed or marked, and a derivative over an
+  `timemap.json` (once the map is exact, see `M2_1_DATASET.md` §9), repeated proxy frames are
+  removed or marked, and a derivative over an
   irregular or unreliable interval is reported as unreliable or non-observable rather than
   as motion (timing artefacts are not biomechanics).
 **Alternatives:** collect 10–20 sessions including other players before M2.2 (more general

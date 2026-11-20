@@ -52,7 +52,8 @@ sincronizzazione temporale esatta: ogni mappa riporta `exact_time_sync: false`.
 
 - **Algoritmo.** ffprobe legge i PTS dei pacchetti video dell'originale, senza decodifica e
   scartando i pacchetti marcati *discard* dall'edit list. I PTS vengono ordinati e riportati
-  al primo fotogramma. Il fotogramma sorgente `i` cade nello slot `floor(t_i × fps + 0,5)`.
+  al primo fotogramma. Il fotogramma sorgente `i` cade nello slot `floor(t_i × fps + 0,5)`,
+  calcolato in aritmetica esatta (PTS intero × `time_base`, correzione del 20/11, §3ter).
   Il fotogramma proxy `k` mostra l'ultimo fotogramma sorgente con slot ≤ `k`. È la regola
   del filtro `fps` di FFmpeg (`round=near`).
 - **Tornare all'originale.** Il tempo nell'originale del fotogramma mostrato al tempo proxy
@@ -146,6 +147,21 @@ recupero `source_time` secondo `floor(T × fps)`, nessun componente che usi il t
 proxy come tempo dell'originale, nessun traceback nelle risposte, report storici redatti in
 lettura, traceback completo nel log con `error_id`, timestamp invariati. Il frontend non
 legge ancora `time_mapping`: una mappa mancante non viene mostrata all'utente.
+
+## 3ter. Correzione dopo la prova su video iPhone reali (20/11/2026)
+
+Durante M2.1 la mappa di IMG_4893 dichiarava 319 fotogrammi ripetuti e 318 saltati. Il
+confronto fotogramma per fotogramma tra proxy e originale (fotogrammi 8950–10050) ha
+mostrato che il proxy ne ha circa 9: la mappa indicava un fotogramma sorgente in più su 317
+fotogrammi su 1100. Causa: lo slot era calcolato su `pts_time` arrotondato a 6 decimali in
+virgola mobile. Gli iPhone usano una scala di 1/600 s e, a 30 fps, molti fotogrammi cadono
+esattamente a metà fra due slot, dove l'errore di arrotondamento sceglie il lato sbagliato.
+Correzione: `read_source_frame_times` legge il PTS intero e il `time_base` dello stream e
+restituisce tempi razionali esatti; `build_timemap` calcola gli slot con `Fraction`
+(arrotondamento per eccesso a metà, come `round=near`). Nuovo test con verità a terra su un
+video sintetico con pareggi a metà slot (fallisce con il codice precedente). Su IMG_4893 la
+mappa ricalcolata dà 4 ripetizioni invece di 319. Le mappe già salvate non vengono
+riscritte: vanno rigenerate rielaborando il video.
 
 ## 4. Problemi rimasti aperti
 

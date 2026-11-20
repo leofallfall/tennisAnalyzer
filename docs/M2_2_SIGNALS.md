@@ -1,7 +1,7 @@
 # M2.2 — Signal processing (pose signals)
 
 Status (2026-11-20): **intervention 1 (time base) merged; intervention 2 (temporal
-smoothing of positions) implemented, under review**; derivatives (velocities,
+smoothing of positions) done** (next steps: ADR-019); derivatives (velocities,
 accelerations), peaks, body-frame normalisation and the other signals are **not
 implemented**. Each intervention
 is reviewed before the next one starts. Scope (approved 2026-11-20): signals only, NumPy

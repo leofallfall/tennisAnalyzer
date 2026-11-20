@@ -70,7 +70,7 @@ be confirmed or revised after the M2.1 data** (D11).
 | Step | Goal | Status |
 | --- | --- | --- |
 | M2.1 | Dataset, labels, `eval_strokes.py`, input visibility report (also M1 item 11) | ✅ single-player dataset (ADR-018) |
-| M2.2 | Kinematic signals (time base, smoothing, two-level visibility, torso scale, apparent 2D speed, shoulder/hip lines, hand distance, wrist vs torso; ADR-019) | in progress: #1 time base, #2 smoothing done; #3 quality levels under review; rest per ADR-019 |
+| M2.2 | Kinematic signals (time base, smoothing, two-level visibility, torso scale, apparent 2D speed, shoulder/hip lines, hand distance, wrist vs torso; ADR-019) | in progress: #1 time base, #2 smoothing, #3 quality levels done; #4 torso scale under review; rest per ADR-019 |
 | M2.3 | Candidate events (relative speed peaks + complementary signals, grouping, confidence, abstention; NumPy peaks) + `strokes.json`, evaluated on the dataset; exit criterion agreed first | not started (needs approval) |
 | M2.4 | Forehand/backhand with levels and uncertainty reasons | not started |
 | M2.5 | Player selection by tap (verification first), identity jumps; `num_poses` > 1 if M2.1 data require it | not started |

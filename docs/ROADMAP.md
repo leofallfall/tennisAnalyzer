@@ -17,8 +17,10 @@ ADR-017). **M2.1 dataset and labels: done for the personal prototype** (2026-11-
 `docs/M2_1_DATASET.md` §9): 6 clips, 35 labelled impacts, **one player** (the developer).
 **Personal-first priority** (ADR-018): the prototype is developed and checked on the
 developer's own tennis first; validation on other players comes later and is not claimed.
-**M2.2 (signal processing only) approved** on 2026-11-20; it starts once PR #1 and PR #2
-are merged and the branch is aligned with `main`.
+**M2.2 (signal processing only) approved** on 2026-11-20 and **in progress** after the
+PR #1/#2 merges: intervention 1 (time base, `docs/M2_2_SIGNALS.md` §2) done; smoothing,
+derivatives and the other signals are not implemented yet (each intervention waits for
+review).
 
 **Personal AI analysis (Claude Code, no API): plumbing done** (2026-11-18, ADR-013,
 `docs/AI_ANALYSIS.md`). Evidence Packs, the `/analizza-sessione` skill, validated import and
@@ -67,7 +69,7 @@ be confirmed or revised after the M2.1 data** (D11).
 | Step | Goal | Status |
 | --- | --- | --- |
 | M2.1 | Dataset, labels, `eval_strokes.py`, input visibility report (also M1 item 11) | ✅ single-player dataset (ADR-018) |
-| M2.2 | Kinematic signals (body frame, gap-aware derivatives on `timemap.json` source times, repeated/skipped frames, smoothing, NumPy peaks) | approved 2026-11-20; starts after PR #1/#2 merge |
+| M2.2 | Kinematic signals (body frame, gap-aware derivatives on `timemap.json` source times, repeated/skipped frames, smoothing, NumPy peaks) | in progress: #1 time base done (2026-11-20); #2+ pending review |
 | M2.3 | Candidate events + `strokes.json`, CLI on existing analyses, evaluated on the dataset | not started |
 | M2.4 | Forehand/backhand with levels and uncertainty reasons | not started |
 | M2.5 | Player selection by tap (verification first), identity jumps; `num_poses` > 1 if M2.1 data require it | not started |

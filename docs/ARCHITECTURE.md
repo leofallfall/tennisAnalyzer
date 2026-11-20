@@ -50,6 +50,7 @@
 | `racket`, `ball` | interface | Detection/tracking |
 | `comparison` | interface | `CameraView`, compatibility, normalisation |
 | `evaluation` | implemented (offline) | M2.1 dataset formats, label/event matching, input visibility report; used by `scripts/eval_strokes.py` only |
+| `signals` | partial (offline, M2.2) | Time base of pose samples (`timebase.py`: source/proxy times, repeated frames, irregular intervals, map checks). Smoothing/derivatives not implemented. Not used by the pipeline |
 | `pipeline.py` | implemented | Milestone 1 pipeline orchestrating the above |
 | `capabilities.py` | implemented | Honest module status, exposed at `/api/system/info` |
 

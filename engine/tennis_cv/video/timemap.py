@@ -20,15 +20,19 @@ What this is and is not
 
 Rule (``fps`` filter, ``round=near``, ``eof_action=pass``): source frame ``i`` at time
 ``t_i`` (relative to the first source frame) belongs to output slot
-``s_i = floor(t_i * fps + 0.5)``. Proxy frame ``k`` shows the last source frame with
-``s_i <= k``; later source frames in the same slot are dropped, empty slots repeat the
-previous frame. Frames after the last slot repeat the last source frame.
+``s_i = floor(t_i * fps + 0.5)``, computed exactly from the integer packet ``pts`` and the
+stream ``time_base`` (a rounded ``pts_time`` put frames lying exactly on a half-slot on the
+wrong side: iPhone files on a 1/600 s timescale have many, found in M2.1). Proxy frame
+``k`` shows the last source frame with ``s_i <= k``; later source frames in the same slot
+are dropped, empty slots repeat the previous frame. Frames after the last slot repeat the
+last source frame.
 """
 
 from __future__ import annotations
 
 import json
 import math
+from collections.abc import Sequence
 from fractions import Fraction
 from pathlib import Path
 
@@ -92,11 +96,14 @@ class TimeMap(StrictModel):
         return self.summary.source_start_pts_s + self.source_times_s[self.source_frame(k)]
 
 
-def read_source_frame_times(path: str | Path, *, timeout_s: float = 300) -> list[float]:
-    """Presentation timestamps (s) of the first video stream's frames, sorted.
+def read_source_frame_times(path: str | Path, *, timeout_s: float = 300) -> list[Fraction]:
+    """Exact presentation times (s) of the first video stream's frames, sorted.
 
-    Uses packet timestamps (no decoding). Packets marked discard by the edit list are
-    skipped, as the decoder skips them.
+    Uses packet timestamps (no decoding): integer ``pts`` times the stream ``time_base``,
+    so that frames lying exactly half a proxy interval from a slot boundary (common with
+    the 1/600 s timescale of phone videos) are assigned like FFmpeg does, which a rounded
+    ``pts_time`` cannot guarantee. Packets marked discard by the edit list are skipped, as
+    the decoder skips them.
     """
     p = Path(path)
     cmd = [
@@ -106,7 +113,7 @@ def read_source_frame_times(path: str | Path, *, timeout_s: float = 300) -> list
         "-select_streams",
         "v:0",
         "-show_entries",
-        "packet=pts_time,flags",
+        "stream=time_base:packet=pts,pts_time,flags",
         "-of",
         "json",
         str(p),
@@ -117,27 +124,44 @@ def read_source_frame_times(path: str | Path, *, timeout_s: float = 300) -> list
             "ffprobe could not read the frame timestamps",
             details={"file": p.name, "stderr": scrub_paths(result.stderr.strip(), p)[-2000:]},
         )
-    packets = json.loads(result.stdout or "{}").get("packets") or []
-    times = sorted(
-        float(pk["pts_time"])
-        for pk in packets
-        if pk.get("pts_time") not in (None, "N/A") and "D" not in str(pk.get("flags", ""))
-    )
+    data = json.loads(result.stdout or "{}")
+    streams = data.get("streams") or [{}]
+    tb_text = str(streams[0].get("time_base") or "")
+    time_base = Fraction(tb_text) if "/" in tb_text and not tb_text.endswith("/0") else None
+    times: list[Fraction] = []
+    for pk in data.get("packets") or []:
+        if "D" in str(pk.get("flags", "")):
+            continue
+        pts = pk.get("pts")
+        if time_base is not None and pts not in (None, "N/A"):
+            times.append(int(pts) * time_base)
+        elif pk.get("pts_time") not in (None, "N/A"):
+            times.append(Fraction(str(pk["pts_time"])))
     if not times:
         raise ProbeError("The video has no timestamped frames", details={"file": p.name})
-    return times
+    return sorted(times)
 
 
 def build_timemap(
-    source_pts_s: list[float], fps: Fraction | float, proxy_frame_count: int | None = None
+    source_pts_s: Sequence[Fraction | float],
+    fps: Fraction | float,
+    proxy_frame_count: int | None = None,
 ) -> TimeMap:
-    """Reproduce the fps-filter selection. ``source_pts_s`` must be sorted."""
+    """Reproduce the fps-filter selection. ``source_pts_s`` must be sorted.
+
+    Slots are computed in exact rational arithmetic (floats are taken at their decimal
+    value), so ties at exactly half a proxy interval round up like FFmpeg's ``round=near``.
+    """
     if not source_pts_s:
         raise ValueError("source_pts_s is empty")
-    rate = float(fps)
-    start = source_pts_s[0]
-    rel = [t - start for t in source_pts_s]
-    slots = [int(math.floor(t * rate + 0.5)) for t in rel]
+    exact = [t if isinstance(t, Fraction) else Fraction(str(t)) for t in source_pts_s]
+    frac_rate = fps if isinstance(fps, Fraction) else Fraction(str(fps))
+    rate = float(frac_rate)
+    start_exact = exact[0]
+    rel_exact = [t - start_exact for t in exact]
+    slots = [math.floor(t * frac_rate + Fraction(1, 2)) for t in rel_exact]
+    start = float(start_exact)
+    rel = [float(t) for t in rel_exact]
     natural = slots[-1] + 1
     count = proxy_frame_count if proxy_frame_count and proxy_frame_count > 0 else natural
     mapping: list[int] = []

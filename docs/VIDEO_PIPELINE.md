@@ -63,7 +63,9 @@ synchronisation** (`exact_time_sync: false` in every map).
   video stream (no decoding), drops packets flagged *discard* by the edit list, sorts them
   (presentation order) and subtracts the first one. Source frame `i` at relative time `t_i`
   belongs to proxy slot `s_i = floor(t_i × fps + 0.5)` — the rule of FFmpeg's `fps` filter
-  (`round=near`). Proxy frame `k` shows the **last** source frame with `s_i ≤ k`. Proxy
+  (`round=near`), computed exactly from integer PTS × stream `time_base` (rounded
+  `pts_time` floats misplace frames lying exactly on a half-slot, frequent on 1/600 s phone
+  timescales). Proxy frame `k` shows the **last** source frame with `s_i ≤ k`. Proxy
   frames after the last slot (`eof_action=pass`) repeat the last source frame.
 - **Content**: `summary` (also in `report.json` as `time_mapping`), `source_times_s`
   (each source frame's time relative to the first) and `proxy_to_source` (source frame index

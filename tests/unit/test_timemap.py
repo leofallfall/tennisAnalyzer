@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import random
 import subprocess
+from fractions import Fraction
 from pathlib import Path
 
 import cv2
@@ -137,6 +138,34 @@ def test_phone_like_jittery_120_fps(tmp_path: Path) -> None:
     src = _write_indexed(tmp_path / "jitter.mp4", pts)
     _, tm = _check(src, tmp_path)
     assert tm.summary.max_abs_error_ms > 0  # type: ignore[attr-defined]
+
+
+def test_half_slot_ties_match_ffmpeg(tmp_path: Path) -> None:
+    """Frames exactly half a proxy interval from a slot boundary (iPhone-like 31.67/35 ms
+    alternation) must be assigned like FFmpeg's fps filter: exact arithmetic, not floats."""
+    pts, t = [0], 0
+    for step in [126] * 10 + [114, 126] * 30 + [114] * 10:  # 35 / 31.67 ms; drift to a tie
+        t += step
+        pts.append(t)
+    src = _write_indexed(tmp_path / "ties.mp4", pts)
+    proxy = tmp_path / "proxy.mp4"
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(src),
+         "-vf", "setpts=PTS-STARTPTS,fps=30", "-c:v", "libx264", str(proxy)],
+        check=True,
+    )  # fmt: skip
+    truth = _read_indices(proxy)
+    tm = build_timemap(read_source_frame_times(src), Fraction(30), len(truth))
+    assert tm.proxy_to_source == truth
+
+
+def test_exact_times_fix_float_rounding_at_ties() -> None:
+    # 1/600 s timescale: frame at 5/60 s is a tie at 30 fps (slot 2.5 -> 3). Its 6-decimal
+    # pts_time (0.083333) would put it in slot 2.
+    exact = [Fraction(0), Fraction(20, 600), Fraction(50, 600), Fraction(70, 600)]
+    assert build_timemap(exact, Fraction(30)).proxy_to_source == [0, 1, 1, 2, 3]
+    rounded = [0.0, 0.033333, 0.083333, 0.116667]
+    assert build_timemap(rounded, Fraction(30)).proxy_to_source == [0, 1, 2, 2, 3]
 
 
 def test_build_timemap_rule_and_lookup() -> None:

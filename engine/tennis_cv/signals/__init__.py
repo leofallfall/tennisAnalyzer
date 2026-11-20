@@ -2,17 +2,20 @@
 
 Intervention 1: :mod:`~tennis_cv.signals.timebase`, the time base of the pose samples
 (source vs proxy times, repeated frames, irregular intervals, map checks).
-Intervention 2: :mod:`~tennis_cv.signals.smoothing`, local polynomial smoothing on real
-times within runs of reliable samples. Derivatives and other signals are not implemented.
+Interventions 2-3: :mod:`~tennis_cv.signals.smoothing`, keypoint quality (good / low but
+usable / unreliable) and local polynomial smoothing on real times within runs.
+Derivatives and other signals are not implemented.
 See docs/M2_2_SIGNALS.md.
 """
 
 from tennis_cv.signals.smoothing import (
+    KeypointQuality,
     RawKeypointSignal,
     SmoothedKeypoint,
     SmoothedSignal,
     SmoothingParams,
     SmoothState,
+    classify_quality,
     extract_keypoint,
     find_runs,
     smooth_keypoint,
@@ -31,6 +34,7 @@ from tennis_cv.signals.timebase import (
 
 __all__ = [
     "IntervalStatus",
+    "KeypointQuality",
     "MapStatus",
     "RawKeypointSignal",
     "SmoothState",
@@ -43,6 +47,7 @@ __all__ = [
     "build_timebase",
     "check_timemap",
     "classify_intervals",
+    "classify_quality",
     "extract_keypoint",
     "find_runs",
     "smooth_keypoint",

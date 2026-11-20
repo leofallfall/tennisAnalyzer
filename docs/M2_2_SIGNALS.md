@@ -1,11 +1,9 @@
 # M2.2 — Signal processing (pose signals)
 
-Status (2026-11-20): **intervention 1 (time base) merged; intervention 2 (temporal
-smoothing of positions) done; intervention 3 (two quality levels, LOW from 0.4) done; intervention 4 (torso scale)
-done** (next
-steps: ADR-019); derivatives (velocities,
-accelerations), peaks, body-frame normalisation and the other signals are **not
-implemented**. Each intervention
+Status (2026-11-20): **interventions 1 (time base), 2 (smoothing of positions), 3 (two
+quality levels, LOW from 0.4) and 4 (torso scale) done; intervention 5 (apparent 2D speed)
+under review** (plan: ADR-019). Accelerations, peaks and the complementary signals of
+intervention 6 are **not implemented**. Each intervention
 is reviewed before the next one starts. Scope (approved 2026-11-20): signals only, NumPy
 only, no change to pipeline / worker / API / UI, no stroke detection (M2.3) and no
 forehand/backhand classification (M2.4). The package `engine/tennis_cv/signals/` is a pure
@@ -314,9 +312,91 @@ spread stays around 2–3 %.
 * Person switches are not detected (M2.5).
 * Window and `min_fraction` are general starting values, not validated.
 
-## 6. Not implemented yet (next interventions, after review)
+## 6. Apparent 2D speed (`tennis_cv.signals.velocity`, intervention 5)
 
-Derivatives (velocity, acceleration) with explicit reliability states, scale normalisation
-(`speed_2d_torso_per_s` is a 2D scale normalisation by torso length per second, not a 3D
-speed), per-player hand/backhand configuration for wrist selection (ADR-019: #5 apparent
-2D speed, #6 complementary signals; peaks move to M2.3).
+```python
+vel = keypoint_velocity(poses, timebase, "right_wrist", scale)  # KeypointVelocity
+vel.vx_px_per_s, vel.vy_px_per_s, vel.speed_2d_px_per_s  # always in pixels/s
+vel.speed_2d_torso_per_s  # NaN where the torso scale is missing
+```
+
+**Method.** The velocity is the first derivative, at the sample, of the **same** local
+polynomial fit that gives the smoothed position (`SmoothedSignal.derivative`, coefficient
+of the linear term divided by the time scale). No second smoothing, no finite difference
+between frames; times are the real times of the time base, so non-uniform intervals are
+handled exactly (test). Velocities therefore share the runs of the positions: no
+derivative crosses a hole, a `long` / `short` / `invalid` interval or a segment boundary.
+
+**What it is.** An *apparent, projected 2D* speed in the image plane (motion towards the
+camera is invisible), with MediaPipe's VIDEO-mode filtering inside (§3: peak timing
+reliable, amplitude not). For timing and comparisons within one video; **not** the
+physical speed of a body segment. `speed_2d_torso_per_s` divides by the stabilised torso
+length (§5), a 2D scale normalisation; pixel values are never replaced.
+
+**States** (`VelocityState`, one-to-one with the smoothing state of the position):
+
+| State | Value | Meaning |
+|---|---|---|
+| `valid` | yes | centred window |
+| `edge` | yes, noisier | window shifted at a run edge |
+| `unreliable` | NaN | position sample not usable (unreliable quality) |
+| `too_short` | NaN | run shorter than the window |
+
+`low_but_usable` samples are inside runs, so they get a velocity like `good` ones; their
+own `quality` is kept and `low_in_window` says how many LOW samples each slope used.
+Consumers decide whether to accept them (rule from the review of #3: measures sensitive to
+the relative position of the hands use GOOD only).
+
+**Noise** (white noise σ = 1 px on positions, 30 fps, 7-point quadratic fit, measured):
+centred slope 5.7 px/s (theory σ / (Δt·√28)); at a run edge 8.7, 14.3 and 20.4 px/s on the
+third, second and first sample (×1.5, ×2.5, ×3.6); a plain frame difference would give
+42.4 px/s. At 24 fps (5-point window) the centred value is 7.6 px/s and the first edge
+sample 26.8 px/s. This is why `edge` velocities are marked.
+
+**Synthetic checks** (`tests/unit/test_signals_velocity.py`): constant velocity exact
+everywhere, edges included; constant acceleration of the position gives the exact linear
+velocity; the derivative equals the slope of `numpy.polyfit` on the same window (centred and
+edge samples, non-uniform times); iPhone-like 31.67/35 ms timing exact, uniform-index fit
+wrong; a 500 px jump at a segment boundary creates no speed; an unreliable sample has no
+velocity and no influence; units (180 px/s, 0.9 torso/s); LOW samples get marked velocities,
+unreliable ones none; missing scale → torso speed NaN, pixel speed kept.
+
+### 6.1 Exploratory check on the 34 labelled forehand/backhand impacts (not a validation)
+
+For each impact, the hitting wrist (right for forehands, left for two-handed backhands),
+the sample with the **largest** `speed_2d_px_per_s` within ±15 samples (±0.5 s) of the
+labelled frame. This is a look at the signal, not peak or impact detection: the window is
+centred on a label we already know.
+
+| | Forehand (19) | Backhand (15) |
+|---|---|---|
+| With a speed in the window | 19 | 14 (img4912_m3 frame 700: none) |
+| Max within ±2 frames of the label | 9 | 2 |
+| Max within ±5 frames | 17 | 7 |
+| Median offset (max − label) | +1 frame | +4 frames |
+
+Overall 11/33 within ±2 frames, 24/33 within ±5. At the maximum: 29 `valid`, 4 `edge`;
+29 `good`, 4 `low_but_usable`. Median `speed_2d_torso_per_s` at the maximum: 7.3 torso/s.
+
+Limits of this look: one player, 34 impacts, labels read by eye (±1–2 frames); the maximum
+in a ±0.5 s window is not necessarily the impact (follow-through, the other stroke phase);
+offsets are mostly positive (the wrist keeps accelerating after contact, and VIDEO-mode
+tracking may lag; the two cannot be separated here); the side view from the forehand side
+(img4912_m3) sees the backhand wrist poorly (3/3 far or missing). The peak-to-impact
+offset is measured properly in M2.3 (ADR-021).
+
+### 6.2 Limits
+
+* Apparent 2D speed only: depth motion is invisible; amplitudes are not physical and not
+  comparable across MediaPipe modes or views.
+* `edge` slopes are 1.5–3.6× noisier than centred ones.
+* LOW samples contribute; a LOW position that is wrong produces a wrong speed (marked by
+  `low_in_window`).
+* No accelerations (out of scope).
+
+## 7. Not implemented yet (next interventions, after review)
+
+Intervention 6 (ADR-019): shoulder and hip lines (degrees), distance between hands and
+wrist position relative to the torso (torso units, GOOD-only where sensitive), player
+configuration (dominant hand, backhand type). Accelerations are out of scope; peak finding
+belongs to M2.3.

@@ -238,3 +238,35 @@ first results, but a rewrite for anyone else).
 **Consequences:** thresholds tuned in M2.2–M2.4 may encode this player's style and must be
 re-checked when other players' clips arrive. Accuracy figures, when they exist, are labelled
 as single-player. M1 item 11 stays partly open.
+
+### ADR-019 Remaining M2.2 direction and M2.3/M2.4 constraints (2026-11-20)
+**Context:** M2.2 #1 (time base) and #2 (smoothing) showed: timing artefacts are solved
+(regenerated maps); MediaPipe VIDEO tracking keeps the peak frame but not the amplitude
+(0.4–1.7×); with visibility ≥ 0.5 as a hard switch, wrists have a value on only 19–72 % of
+samples, although M2.1 found wrists placed correctly at scores of 0.35.
+**Decision (approved by the developer):**
+- Visibility: two quality levels, *good* and *low but usable*, instead of one switch at 0.5.
+  Raw coordinates, visibility, quality and smoothing state are always kept. Unreliable
+  samples still break runs (no interpolation across holes). No weighting or adaptive
+  algorithms until their need is shown.
+- Scale: robust torso length from reliable measurements, stabilised over time; no
+  normalised value when the torso is not observable; pixel coordinates always kept.
+- Velocity: first derivative of the same local polynomial fit, on real times. Described as
+  *apparent 2D (projected) speed*, used for timing and comparisons within one video, not
+  as the physical speed of a body segment. No accelerations for now.
+- Complementary signals: shoulder line, hip line, distance between hands, wrist position
+  relative to the torso. Dominant hand and backhand type are player configuration.
+- Evidence levels are always kept apart: synthetic tests, behaviour observed on the 13
+  videos / 35 impacts, and validation. Results on one player are not a generalisation.
+- M2.2 stays bounded: only the signals M2.3 needs; choices that cannot be validated yet are
+  documented, not engineered further.
+- M2.3 (after explicit approval, exit criterion proposed first): stroke candidates from
+  speed peaks plus complementary signals, thresholds relative to the video, peak grouping,
+  confidence and evidence; a peak is not automatically a stroke; abstention allowed.
+- M2.4: forehand/backhand depends on player configuration and camera view; `unknown` allowed.
+- Peak finding moves from M2.2 to M2.3, where it is used.
+**Alternatives:** keep 0.5 as a hard switch (simpler, loses most wrist samples around
+backhands); finite differences of smoothed positions for speed (inconsistent at run edges);
+absolute speed thresholds (not supported by the VIDEO/IMAGE comparison).
+**Consequences:** the remaining M2.2 interventions are proposed one by one and reviewed;
+M2.3 does not start without approval.

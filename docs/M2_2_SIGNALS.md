@@ -1,7 +1,9 @@
 # M2.2 — Signal processing (pose signals)
 
-Status (2026-11-20): **intervention 1 (time base) implemented**; smoothing, derivatives,
-body-frame normalisation and the other signals are **not implemented**. Each intervention
+Status (2026-11-20): **intervention 1 (time base) merged; intervention 2 (temporal
+smoothing of positions) done** (next steps: ADR-019); derivatives (velocities,
+accelerations), peaks, body-frame normalisation and the other signals are **not
+implemented**. Each intervention
 is reviewed before the next one starts. Scope (approved 2026-11-20): signals only, NumPy
 only, no change to pipeline / worker / API / UI, no stroke detection (M2.3) and no
 forehand/backhand classification (M2.4). The package `engine/tennis_cv/signals/` is a pure
@@ -105,9 +107,88 @@ is why old maps must be regenerated (see §3).
 * **Without a map** the base is on proxy times and unverified: repeats and VFR holes are
   invisible; later signals must treat such a base as lower quality.
 
-## 4. Not implemented yet (next interventions, after review)
+## 4. Temporal smoothing (`tennis_cv.signals.smoothing`)
 
-Visibility/continuity of keypoints per sample, scale normalisation (`speed_2d_torso_per_s`
-is a 2D scale normalisation by torso length per second, not a 3D speed), local polynomial
-fit on non-uniform times within segments, derivatives with explicit reliability states,
-per-player hand/backhand configuration for wrist selection.
+Positions only. No velocity, acceleration or peak is computed here.
+
+```python
+raw = extract_keypoint(poses, timebase, "right_wrist")  # RawKeypointSignal (pixels)
+sm = smooth_keypoint(raw)  # SmoothedKeypoint: raw + x/y SmoothedSignal
+```
+
+**Raw signal.** `x_px`, `y_px` = MediaPipe's normalised `x`, `y` × image width / height
+(same unit on both axes), exactly as written in `pose.json`; NaN only when the pose was
+not detected or the keypoint is absent. `reliable` = detected, finite and
+`visibility >= min_visibility` (0.5, approved starting value, not validated). Raw values
+are never overwritten: `SmoothedSignal.raw` is a copy next to `smoothed`.
+
+**Method.** For every sample *i* a polynomial of order `polyorder` (2) is fitted by least
+squares to the `window` samples around it, in `t - t_i` seconds from the time base (real,
+non-uniform times), and its value at `t_i` is taken. On uniform times this is exactly the
+Savitzky–Golay filter; on iPhone timing (31.67 / 35.00 ms) a quadratic in real time is
+reproduced exactly, while a fit on the frame index is biased (test 7).
+`window` comes from `window_s = 0.2` s and the nominal interval: 7 samples at 30 fps,
+5 at 24 fps, always odd and ≥ `polyorder + 2`.
+
+**Runs.** Fits use only *runs*: consecutive reliable samples of one time-base segment. A
+run ends at every `long` / `short` / `invalid` interval and at every unreliable sample, so
+no fit crosses an anomalous interval or bridges a hole, and nothing from one run can affect
+another (test 4: a 10⁴ px jump in the next segment changes nothing).
+
+**Per-sample state** (`SmoothState`):
+
+| State | Value | When |
+|---|---|---|
+| `smoothed` | yes | centred window inside the run |
+| `edge` | yes | first/last `window // 2` samples of a run: window shifted inside the run |
+| `unreliable` | NaN | raw sample not reliable; never interpolated |
+| `too_short` | NaN | run shorter than `window` |
+
+**Edges.** The window is shifted, not shrunk, and the polynomial is evaluated inside the
+fitted interval (no extrapolation), so polynomials up to order 2 are reproduced exactly at
+the edges and no overshoot is created. Edge values are noisier: measured noise factor (std
+of output / std of white input noise) 0.86 on the first/last sample of a run, 0.53 on the
+next two, 0.58 for centred samples (7-point quadratic). Later steps must weigh `edge`
+samples accordingly.
+
+**Synthetic checks** (`tests/unit/test_signals_smoothing.py`): noise reduced to ≈ 0.58×
+(centre); a Gaussian bump keeps its peak frame and 98.7 % of its height at σ = 0.1 s
+(95.6 % at 0.07 s, 88 % at 0.05 s: a very short excursion is flattened, a known
+property of any smoothing of this width); runs shorter than the window and unreliable
+samples have no value; an unreliable raw value has no influence anywhere.
+
+### 4.1 Behaviour on the 13 M2.1 videos (not a validation)
+
+Run on wrists, shoulders and hips with the regenerated maps (4.4 s for 78 series).
+Figures describe what the method does with these inputs; they say nothing about
+biomechanical accuracy.
+
+* **Share of samples with a value** (`smoothed` + `edge`): shoulders/hips 57–89 %; wrists
+  19–72 % (left wrist usually lowest). The rest is mostly `unreliable` (pose not
+  detected, player out of frame or wrist visibility < 0.5); `too_short` is 0.3–3.7 %.
+* **Raw − smoothed residual** (centred samples, RMS): shoulders/hips 0.6–5 px, wrists
+  2–10 px; 99th percentile up to 39 px on wrists (fast swings and tracking jumps both
+  contribute; the method cannot tell them apart).
+* **At the 35 labelled impacts** (right wrist for forehands and other strokes, left wrist
+  for two-handed backhands): 31 `smoothed`, 1 `edge`, 3 `unreliable` (visibility < 0.5)
+  at the impact sample; 23/35 windows of ±10 samples have a value on every sample. With
+  the threshold at 0 it would be 34 + 1 and 34/35: the 0.5 threshold is the main source of
+  holes around impacts (M2.1 found wrists placed correctly with scores of 0.35).
+
+### 4.2 Limits
+
+* Smoothing reduces jitter; it does not correct MediaPipe tracking errors (a wrong but
+  confident wrist stays wrong) and it adds a second low-pass on top of MediaPipe's own
+  VIDEO-mode filtering (§3).
+* Window and order are general starting values, not tuned on data; fast short
+  excursions (< ~0.07 s) are attenuated.
+* `edge` samples are valid but noisier; `too_short` runs are lost rather than smoothed with
+  a smaller window (deliberately conservative).
+* The visibility threshold is per keypoint score and unvalidated; it discards many wrist
+  samples (see 4.1). Choosing it is a later, data-based decision.
+
+## 5. Not implemented yet (next interventions, after review)
+
+Derivatives (velocity, acceleration) with explicit reliability states, scale normalisation
+(`speed_2d_torso_per_s` is a 2D scale normalisation by torso length per second, not a 3D
+speed), peaks, per-player hand/backhand configuration for wrist selection.

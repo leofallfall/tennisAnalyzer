@@ -14,6 +14,8 @@ const baseAnalysis: Analysis = {
   video_relation: 'single',
   stroke_filter: 'both',
   focus: null,
+  dominant_hand: null,
+  backhand: null,
   status: 'created',
   stage: null,
   progress: 0,
@@ -136,5 +138,74 @@ describe('analysis detail', () => {
     expect(await screen.findByText('MediaPipe pose model not found')).toBeInTheDocument()
     expect(screen.getByText('code: model_not_available')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry processing' })).toBeInTheDocument()
+  })
+})
+
+const systemInfo = {
+  api_version: '0.1.0',
+  engine_version: '0.1.0',
+  python_version: '3.12.3',
+  platform: 'Linux',
+  database: 'sqlite',
+  storage_writable: true,
+  tools: [{ name: 'ffmpeg', available: true, version: 'ffmpeg 6.1' }],
+  pose_model: { name: 'pose_landmarker_full.task', available: true, version: null },
+  pose_runtime: {
+    name: 'mediapipe_runtime',
+    available: false,
+    version: null,
+    detail: 'The MediaPipe runtime could not be loaded (OSError). Install libegl1 libgles2.',
+  },
+  capabilities: [],
+}
+
+describe('system status', () => {
+  it('reports a MediaPipe runtime that cannot load, with the fix', async () => {
+    mockFetch({ '/api/system/info': systemInfo, '/api/analyses': [] })
+    renderAt('/system')
+    expect(await screen.findByText(/Pose estimation cannot run/)).toHaveTextContent(
+      'libegl1 libgles2',
+    )
+    expect(screen.getByText('mediapipe_runtime')).toBeInTheDocument()
+    expect(screen.getByText('Writable')).toBeInTheDocument()
+  })
+
+  it('lists the most recent processing errors with a link to the analysis', async () => {
+    const failed = (id: string, finished: string, code: string) => ({
+      ...baseAnalysis,
+      id,
+      title: `Analysis ${id}`,
+      video_count: 1,
+      status: 'failed',
+      error: { code, message: `${code} message`, details: {} },
+      finished_at: finished,
+    })
+    mockFetch({
+      '/api/system/info': {
+        ...systemInfo,
+        pose_runtime: { ...systemInfo.pose_runtime, available: true, detail: null },
+      },
+      '/api/analyses': [
+        { ...baseAnalysis, id: 'ok', video_count: 1, status: 'completed' },
+        failed('old', '2026-11-18T09:00:00Z', 'probe_failed'),
+        failed('new', '2026-11-19T09:00:00Z', 'pose_runtime_unavailable'),
+      ],
+    })
+    renderAt('/system')
+    const list = await screen.findByRole('list', { name: 'Recent processing errors' })
+    const items = within(list).getAllByRole('listitem')
+    expect(items).toHaveLength(2)
+    expect(items[0]).toHaveTextContent('pose_runtime_unavailable')
+    expect(within(items[0]!).getByRole('link', { name: 'Analysis new' })).toHaveAttribute(
+      'href',
+      '/analyses/new',
+    )
+    expect(items[1]).toHaveTextContent('probe_failed')
+  })
+
+  it('says so when there are no failed analyses', async () => {
+    mockFetch({ '/api/system/info': systemInfo, '/api/analyses': [] })
+    renderAt('/system')
+    expect(await screen.findByText('No failed analyses.')).toBeInTheDocument()
   })
 })

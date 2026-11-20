@@ -36,7 +36,7 @@ models/              Downloaded model files (git-ignored)
 | Node.js | ≥ 20 (22 tested) | |
 | pnpm | 10 | `corepack enable` or `npm i -g pnpm` |
 | FFmpeg + ffprobe | ≥ 6 with libx264 | `brew install ffmpeg` / `apt install ffmpeg` / `winget install ffmpeg` |
-| Linux only | `libegl1 libgles2` | Required by MediaPipe: `sudo apt install libegl1 libgles2` |
+| Linux only | `libegl1 libgles2` | Required by MediaPipe: `sudo apt install libegl1 libgles2`. Without them System Status shows *mediapipe_runtime* missing and processing fails with `pose_runtime_unavailable` |
 
 ## Install
 
@@ -93,16 +93,16 @@ Tests that need the MediaPipe model are skipped (with a message) if it is not do
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/health` | Liveness |
-| GET | `/api/system/info` | Versions, tools, model presence, module capabilities |
+| GET | `/api/system/info` | Versions, tools, model presence, real MediaPipe runtime check (`pose_runtime`), storage writable, module capabilities (no server paths) |
 | POST | `/api/videos/upload` | Multipart `file`; returns metadata + validation; 415/413/422 on bad input |
 | GET | `/api/videos/{id}` | Video record |
 | GET | `/api/videos/{id}/file` | Original file (range requests) |
 | GET | `/api/analyses` | List |
-| POST | `/api/analyses` | Create (`mode`, `videos[{video_id, camera_view}]`, `video_relation`, …) |
+| POST | `/api/analyses` | Create (`mode`, `videos[{video_id, camera_view}]`, `video_relation`, optional `dominant_hand`/`backhand`, …) |
 | GET | `/api/analyses/{id}` | Analysis with per-video reports and artifact URLs |
 | GET | `/api/analyses/{id}/status` | Status, stage, progress, structured error |
 | POST | `/api/analyses/{id}/start` | Queue for the worker (202); 409 if already queued/running/completed |
-| GET | `/api/analyses/{id}/videos/{vid}/artifacts/{proxy\|pose\|overlay\|report}` | Results |
+| GET | `/api/analyses/{id}/videos/{vid}/artifacts/{proxy\|pose\|overlay\|report\|timemap}` | Results (JSON gzip-compressed when accepted) |
 
 Errors always have the shape `{"error": {"code", "message", "details"}}`.
 

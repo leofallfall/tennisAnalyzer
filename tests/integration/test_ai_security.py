@@ -617,7 +617,11 @@ def test_migration_keeps_results_imported_before_the_history(
             {"r": json.dumps(legacy_result), "id": ai_id},
         )
     applied = db.migrate()
-    assert applied == ["2026_11_18_ai_integrity_and_history"]
+    # Every migration recorded after b655112 runs again (M1.10 added the second one).
+    assert applied == [
+        "2026_11_18_ai_integrity_and_history",
+        "2026_11_19_analysis_player_handedness",
+    ]
     assert db.migrate() == []  # idempotent
     cols = {col["name"] for col in inspect(db.engine).get_columns("ai_analyses")}
     assert {"manifest_sha256", "last_rejected_at"} <= cols

@@ -138,3 +138,41 @@ carried the analysis title, the free-text focus and the original file name.
 - The CLI `ai_pack.py validate` reads the anchor from the database when it can. If it cannot, it says the manifest hash was not checked.
 - Security still depends on the database not being writable by the analyst. Claude Code runs with the user's permissions, so this is protection against accidental or unreviewed changes, not against a deliberately malicious local process.
 
+
+### ADR-015 One frame-rate rule for every proxy, and a reconstructed proxy → original map (M1.10)
+**Context:** the proxy (ADR-006) resampled VFR inputs with the `fps` filter and left CFR
+inputs to `-fps_mode cfr`, and FFmpeg aligned the output on the container start (an earlier
+audio track added duplicated frames). Nothing recorded which original frame each proxy
+frame shows.
+**Decision:** every proxy is built with `setpts=PTS-STARTPTS,fps=<rate>:eof_action=pass`
+(CFR inputs keep their nominal rate, VFR inputs get their average rate). `timemap.py`
+reconstructs the `fps` filter's selection rule from the source packet PTS and stores
+`timemap.json` plus a summary in the report, explicitly flagged `exact_time_sync: false`.
+**Alternatives:**
+- Emulate `-fps_mode cfr` as well: two rules to reproduce, the vsync one depending on
+  internal thresholds and lead-in handling (measured to differ by one frame on a delayed
+  start).
+- Read the selection back from FFmpeg (`showinfo` checksums before/after `fps`): exact but
+  needs parsing stderr of the encode and ambiguous for identical frames.
+- PTS-based timestamps end to end: exact, but every consumer changes (ADR-006).
+**Consequences:** proxy time 0 is always the first video frame; CFR proxies are unchanged
+except when the container start differs from the video start. Ground-truth tests encode
+each frame's index in its pixels and check the map against the real proxy. Real phone
+files are validated in M1.11.
+
+### ADR-016 API response hygiene: UTC, no server paths, compressed JSON (M1.10)
+**Context:** SQLite returned naive datetimes, serialised without offset and shown 1–2 h
+early in Italy; error details, reports and `system/info` exposed absolute paths and
+tracebacks; `pose.json` was sent uncompressed.
+**Decision:** `UTCDateTime` column type (UTC on write, tagged UTC on read: fixes old rows
+without migration); engine errors name files by base name and scrub tool stderr, the API
+passes error bodies, analysis status/results and served reports through
+`redaction.redact` (known server roots → `<storage>`, `<models>`, `<app>`, `<home>`),
+tracebacks stay in the log with an `error_id`; FastAPI's bundled `GZipMiddleware` for JSON.
+**Alternatives:** storing ISO strings instead of datetimes (schema change); a database
+data rewrite to strip old paths (irreversible, and new rows would still need the same
+rule); hiding all error details (loses useful diagnostics such as ffprobe's reason);
+Brotli (new dependency).
+**Consequences:** redaction is a safety net based on known roots: a path outside them in a
+third-party message would not be shortened (engine errors no longer produce such paths).
+The AI hand-off command intentionally keeps the pack path the user types.

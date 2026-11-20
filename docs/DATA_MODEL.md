@@ -41,9 +41,20 @@ Future: `user_id, recorded_at, source (user|professional_reference), licence`.
 
 ### Analysis **[M1]**
 `id, mode (session|single_stroke), title, video_relation (single|
-same_stroke_multi_angle|different_strokes), stroke_filter, focus, status (created|queued|
+same_stroke_multi_angle|different_strokes), stroke_filter, focus, dominant_hand
+(right|left|NULL), backhand (one_handed|two_handed|NULL), status (created|queued|
 running|completed|failed), stage, progress, error_code, error_message, error_details,
 results (JSON), created_at, updated_at, started_at, finished_at`.
+
+`dominant_hand` and `backhand` (M1.10, migration `2026_11_19_analysis_player_handedness`)
+are declared by the user when creating the analysis (pre-filled from the browser profile)
+and are NULL when not provided: never inferred from video. They are not sent to the AI
+Evidence Pack yet. The player profile itself still lives only in the browser.
+
+All timestamps are stored and returned as UTC (`UTCDateTime` column type, M1.10): API
+values always carry an offset (`+00:00`), also on SQLite, which keeps no timezone.
+`error_details` never holds tracebacks or server paths (M1.10): `internal_error` stores
+`{error_id, exception}`; the traceback is in the worker log.
 
 ### AnalysisVideo **[M1]**
 `analysis_id, video_id, position, camera_view`. Associates several videos with one

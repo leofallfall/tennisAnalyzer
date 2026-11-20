@@ -125,10 +125,36 @@ export interface ProcessingReport {
   pose_estimator: string
   pose_model: string
   pose_summary: PoseSummary
+  /** Proxy -> original correspondence (frame-exact, time-approximate). Per-frame map in
+   * the `timemap` artifact. Absent in reports made before M1.10. */
+  time_mapping?: TimeMapSummary | null
   artifacts: Record<string, string>
   timings: StepTiming[]
   total_duration_ms: number
   not_performed: string[]
+}
+
+/** engine/tennis_cv/video/timemap.py — never an exact time synchronisation. */
+export interface TimeMapSummary {
+  method: string
+  exact_time_sync: false
+  source_start_pts_s: number
+  proxy_fps: number
+  source_frame_count: number
+  proxy_frame_count: number
+  duplicated_frames: number
+  dropped_frames: number
+  max_abs_error_ms: number
+  mean_abs_error_ms: number
+  limitations: string[]
+}
+
+export interface TimeMap {
+  summary: TimeMapSummary
+  /** Source frame times relative to the first frame, presentation order. */
+  source_times_s: number[]
+  /** Proxy frame k shows source frame proxy_to_source[k]. */
+  proxy_to_source: number[]
 }
 
 export interface TimeInterval {
@@ -157,6 +183,9 @@ export type AnalysisMode = 'session' | 'single_stroke'
 export type AnalysisStatus = 'created' | 'queued' | 'running' | 'completed' | 'failed'
 export type VideoRelation = 'single' | 'same_stroke_multi_angle' | 'different_strokes'
 export type StrokeFilter = 'forehand' | 'backhand' | 'both'
+/** Declared by the user, never inferred (M1.10). null = not provided. */
+export type DominantHand = 'right' | 'left'
+export type BackhandStyle = 'one_handed' | 'two_handed'
 export type ViewAngle =
   'side_forehand' | 'side_backhand' | 'front' | 'behind' | 'diagonal' | 'unknown'
 
@@ -214,6 +243,8 @@ export interface Analysis extends AnalysisStatusInfo {
   video_relation: VideoRelation
   stroke_filter: StrokeFilter
   focus: string | null
+  dominant_hand: DominantHand | null
+  backhand: BackhandStyle | null
   created_at: string
   videos: AnalysisVideo[]
   results: AnalysisResults | null
@@ -233,6 +264,8 @@ export interface AnalysisCreate {
   video_relation?: VideoRelation
   stroke_filter?: StrokeFilter
   focus?: string
+  dominant_hand?: DominantHand | null
+  backhand?: BackhandStyle | null
 }
 
 export interface Capability {
@@ -245,6 +278,8 @@ export interface ToolStatus {
   name: string
   available: boolean
   version: string | null
+  /** Why the tool is unavailable and how to fix it. */
+  detail?: string | null
 }
 
 export interface SystemInfo {
@@ -253,9 +288,12 @@ export interface SystemInfo {
   python_version: string
   platform: string
   database: string
-  storage_dir: string
+  /** The storage path itself is not exposed (M1.10). */
+  storage_writable: boolean
   tools: ToolStatus[]
   pose_model: ToolStatus
+  /** MediaPipe really loads (native libraries + model), not just imports. */
+  pose_runtime: ToolStatus
   capabilities: Capability[]
 }
 

@@ -10,6 +10,8 @@ validate ingestion and pose estimation on real amateur footage.
 from __future__ import annotations
 
 import json
+import logging
+import subprocess
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -18,15 +20,21 @@ from pydantic import Field
 
 from tennis_cv import __version__
 from tennis_cv.common import StrictModel
-from tennis_cv.errors import VideoValidationError
+from tennis_cv.errors import TennisCVError, VideoValidationError
 from tennis_cv.pose.base import PoseEstimator
-from tennis_cv.pose.models import PoseFrame, PoseSequence, PoseSummary, summarize
+from tennis_cv.pose.models import PoseFrame, PoseSequence, PoseSummary, for_storage, summarize
 from tennis_cv.pose.overlay import OverlayWriter, annotate_frame_info, draw_skeleton
 from tennis_cv.quality.assessment import QualityReport, assess_quality
 from tennis_cv.quality.metrics import FrameQuality, measure_frame
 from tennis_cv.video.frames import iter_frames
 from tennis_cv.video.metadata import VideoMetadata, probe_video
-from tennis_cv.video.preprocess import PreprocessOptions, PreprocessResult, preprocess_video
+from tennis_cv.video.preprocess import (
+    PreprocessOptions,
+    PreprocessResult,
+    preprocess_video,
+    proxy_frame_rate,
+)
+from tennis_cv.video.timemap import TimeMapSummary, build_timemap, read_source_frame_times
 from tennis_cv.video.validation import ValidationResult, validate_metadata
 
 ProgressCallback = Callable[[str, float], None]
@@ -35,6 +43,9 @@ PROXY_NAME = "proxy.mp4"
 POSE_NAME = "pose.json"
 OVERLAY_NAME = "overlay.mp4"
 REPORT_NAME = "report.json"
+TIMEMAP_NAME = "timemap.json"
+
+log = logging.getLogger(__name__)
 
 
 class PipelineOptions(StrictModel):
@@ -59,6 +70,11 @@ class ProcessingReport(StrictModel):
     pose_estimator: str
     pose_model: str
     pose_summary: PoseSummary
+    time_mapping: TimeMapSummary | None = Field(
+        default=None,
+        description="Proxy -> original frame correspondence (frame-exact, time-approximate); "
+        "per-frame map in timemap.json. None when it could not be built.",
+    )
     artifacts: dict[str, str]
     timings: list[StepTiming]
     total_duration_ms: float
@@ -112,6 +128,10 @@ def run_video_processing(
     t0 = time.perf_counter()
     prep = preprocess_video(source, out / PROXY_NAME, source_metadata=meta, options=opts.preprocess)
     timed("preprocess", t0)
+
+    t0 = time.perf_counter()
+    time_mapping = _write_timemap(source, meta, prep, out)
+    timed("time_mapping", t0)
     proxy_meta = prep.metadata
     fps = proxy_meta.effective_fps or 30.0
     quality_every = max(1, int(round(opts.quality_sample_every_s * fps)))
@@ -174,7 +194,8 @@ def run_video_processing(
 
     progress("writing_results", 0.95)
     t0 = time.perf_counter()
-    (out / POSE_NAME).write_text(seq.model_dump_json())
+    # Reduced storage precision applies to the file only (M1.10, pose/models.py).
+    (out / POSE_NAME).write_text(for_storage(seq).model_dump_json())
     quality = assess_quality(
         proxy_meta, frame_quality, pose_detection_rate=pose_summary.detection_rate
     )
@@ -186,14 +207,26 @@ def run_video_processing(
     artifacts = {"proxy": PROXY_NAME, "pose": POSE_NAME}
     if overlay_path is not None:
         artifacts["overlay"] = OVERLAY_NAME
+    if time_mapping is not None:
+        artifacts["timemap"] = TIMEMAP_NAME
+    # The report reaches API clients: file references are relative, never absolute paths
+    # (the source is named by its base name, the proxy relative to ``output_dir``).
+    public_meta = meta.model_copy(update={"path": Path(meta.path).name})
+    public_prep = prep.model_copy(
+        update={
+            "output_path": PROXY_NAME,
+            "metadata": prep.metadata.model_copy(update={"path": PROXY_NAME}),
+        }
+    )
     report = ProcessingReport(
-        source_metadata=meta,
+        source_metadata=public_meta,
         validation=validation,
-        preprocess=prep,
+        preprocess=public_prep,
         quality=quality,
         pose_estimator=estimator.name,
         pose_model=estimator.model,
         pose_summary=pose_summary,
+        time_mapping=time_mapping,
         artifacts=artifacts,
         timings=timings,
         total_duration_ms=(time.perf_counter() - t_total) * 1000,
@@ -201,3 +234,26 @@ def run_video_processing(
     (out / REPORT_NAME).write_text(json.dumps(report.model_dump(mode="json"), indent=2))
     progress("completed", 1.0)
     return report
+
+
+def _write_timemap(
+    source: str | Path, meta: VideoMetadata, prep: PreprocessResult, out: Path
+) -> TimeMapSummary | None:
+    """Build and save the proxy -> original map. Not fatal: the proxy timeline is
+    self-consistent without it; only the link back to the original is missing."""
+    rate = proxy_frame_rate(meta)
+    if rate is None:
+        return None
+    try:
+        times = read_source_frame_times(source)
+    except TennisCVError as exc:
+        log.warning("Time map not built: %s %s", exc.code, exc.message)
+        return None
+    except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+        # Invalid ffprobe JSON (JSONDecodeError is a ValueError), timeout or OS error: the
+        # map is missing, the analysis is not failed (documented behaviour).
+        log.warning("Time map not built: %s", type(exc).__name__, exc_info=True)
+        return None
+    timemap = build_timemap(times, rate, prep.metadata.frame_count)
+    (out / TIMEMAP_NAME).write_text(timemap.model_dump_json())
+    return timemap.summary

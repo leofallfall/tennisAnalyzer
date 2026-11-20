@@ -8,7 +8,9 @@ from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 from tennis_api.db import Base
 
@@ -19,6 +21,34 @@ def new_id() -> str:
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+class UTCDateTime(TypeDecorator[datetime]):
+    """Timezone-aware UTC datetime column, also on SQLite.
+
+    SQLite has no timezone type: ``DateTime(timezone=True)`` stores the UTC wall time and
+    returns a *naive* datetime, which the API then serialised without an offset and
+    browsers read as local time (1-2 h shift in Italy). Values are normalised to UTC on
+    write and tagged as UTC on read, so existing rows (always written as UTC) are fixed
+    without a migration.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 class AnalysisMode(StrEnum):
@@ -38,6 +68,21 @@ class StrokeFilter(StrEnum):
     FOREHAND = "forehand"
     BACKHAND = "backhand"
     BOTH = "both"
+
+
+class DominantHand(StrEnum):
+    """Declared by the user; never inferred from video (M1.10). Needed by M2 to tell
+    forehand from backhand."""
+
+    RIGHT = "right"
+    LEFT = "left"
+
+
+class BackhandStyle(StrEnum):
+    """Declared by the user; never inferred from video (M1.10)."""
+
+    ONE_HANDED = "one_handed"
+    TWO_HANDED = "two_handed"
 
 
 class AnalysisStatus(StrEnum):
@@ -66,7 +111,7 @@ class Video(Base):
     sha256: Mapped[str] = mapped_column(String(64), index=True)
     video_metadata: Mapped[dict[str, Any]] = mapped_column(JSON)
     validation: Mapped[dict[str, Any]] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class Analysis(Base):
@@ -78,6 +123,12 @@ class Analysis(Base):
     video_relation: Mapped[str] = mapped_column(String(48))
     stroke_filter: Mapped[str] = mapped_column(String(16), default=StrokeFilter.BOTH.value)
     focus: Mapped[str | None] = mapped_column(Text, doc="Technical aspect to investigate")
+    dominant_hand: Mapped[str | None] = mapped_column(
+        String(8), doc="DominantHand declared at creation; NULL = not provided, never inferred"
+    )
+    backhand: Mapped[str | None] = mapped_column(
+        String(16), doc="BackhandStyle declared at creation; NULL = not provided"
+    )
     status: Mapped[str] = mapped_column(String(16), default=AnalysisStatus.CREATED.value)
     stage: Mapped[str | None] = mapped_column(String(64))
     progress: Mapped[float] = mapped_column(Float, default=0.0)
@@ -85,12 +136,10 @@ class Analysis(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     error_details: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     results: Mapped[dict[str, Any] | None] = mapped_column(JSON)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
-    )
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
     video_links: Mapped[list[AnalysisVideo]] = relationship(
         back_populates="analysis",
@@ -125,9 +174,9 @@ class ProcessingJob(Base):
     status: Mapped[str] = mapped_column(String(16), default=JobStatus.QUEUED.value, index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     worker_id: Mapped[str | None] = mapped_column(String(128))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     error: Mapped[str | None] = mapped_column(Text)
 
 
@@ -163,13 +212,13 @@ class AiAnalysis(Base):
     validation_errors: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
     validation_warnings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
     import_attempts: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    imported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    imported_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
     manifest_sha256: Mapped[str | None] = mapped_column(
         String(64),
         doc="SHA-256 of manifest.json at creation (C2 integrity anchor). NULL = legacy pack.",
     )
-    last_rejected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_rejected_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
     imports: Mapped[list[AiAnalysisImport]] = relationship(
         back_populates="ai_analysis",
@@ -204,7 +253,7 @@ class AiAnalysisImport(Base):
     result: Mapped[dict[str, Any]] = mapped_column(JSON)
     validation_warnings: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON)
     origin: Mapped[str] = mapped_column(String(24), default=AiImportOrigin.IMPORT.value)
-    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    imported_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
     ai_analysis: Mapped[AiAnalysis] = relationship(back_populates="imports")
 
@@ -215,4 +264,4 @@ class SchemaMigration(Base):
     __tablename__ = "schema_migrations"
 
     id: Mapped[str] = mapped_column(String(128), primary_key=True)
-    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    applied_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)

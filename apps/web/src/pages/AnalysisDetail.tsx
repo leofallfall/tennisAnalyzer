@@ -87,6 +87,9 @@ export function AnalysisDetailPage() {
           <>
             {humanize(analysis.mode)} analysis · created {formatDateTime(analysis.created_at)}
             {analysis.videos.length > 1 && <> · {humanize(analysis.video_relation)}</>}
+            {' · '}dominant hand:{' '}
+            {analysis.dominant_hand ? humanize(analysis.dominant_hand) : 'not specified'}
+            {analysis.backhand && <> · {humanize(analysis.backhand)} backhand</>}
           </>
         }
       />

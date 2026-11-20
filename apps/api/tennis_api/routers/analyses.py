@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 
+from tennis_api.config import Settings
 from tennis_api.deps import DbDep, SettingsDep
 from tennis_api.errors import ApiError, not_found
 from tennis_api.models import (
@@ -14,6 +17,7 @@ from tennis_api.models import (
     ProcessingJob,
     Video,
 )
+from tennis_api.redaction import redact
 from tennis_api.schemas import (
     AnalysisCreate,
     AnalysisOut,
@@ -29,28 +33,30 @@ router = APIRouter(prefix="/api/analyses", tags=["analyses"])
 STARTABLE = {AnalysisStatus.CREATED.value, AnalysisStatus.FAILED.value}
 
 
-def _error(a: Analysis) -> ErrorInfo | None:
+def _error(a: Analysis, settings: Settings) -> ErrorInfo | None:
     if not a.error_code:
         return None
-    return ErrorInfo(
-        code=a.error_code, message=a.error_message or "", details=a.error_details or {}
-    )
+    # Rows written before M1.10 may hold absolute paths or a traceback.
+    details = dict(a.error_details or {})
+    details.pop("traceback", None)
+    message, details = redact((a.error_message or "", details), settings)
+    return ErrorInfo(code=a.error_code, message=message, details=details)
 
 
-def _status_fields(a: Analysis) -> dict[str, object]:
+def _status_fields(a: Analysis, settings: Settings) -> dict[str, object]:
     return {
         "id": a.id,
         "status": a.status,
         "stage": a.stage,
         "progress": a.progress,
-        "error": _error(a),
+        "error": _error(a, settings),
         "started_at": a.started_at,
         "finished_at": a.finished_at,
         "updated_at": a.updated_at,
     }
 
 
-def _to_out(a: Analysis) -> AnalysisOut:
+def _to_out(a: Analysis, settings: Settings) -> AnalysisOut:
     results = a.results or {}
     videos = []
     for link in a.video_links:
@@ -72,15 +78,17 @@ def _to_out(a: Analysis) -> AnalysisOut:
             )
         )
     return AnalysisOut(
-        **_status_fields(a),
+        **_status_fields(a, settings),
         mode=AnalysisMode(a.mode),
         title=a.title,
         video_relation=a.video_relation,
         stroke_filter=a.stroke_filter,
         focus=a.focus,
+        dominant_hand=a.dominant_hand,
+        backhand=a.backhand,
         created_at=a.created_at,
         videos=videos,
-        results=a.results,
+        results=redact(a.results, settings) if a.results is not None else None,
     )
 
 
@@ -92,11 +100,11 @@ def _get(db: DbDep, analysis_id: str) -> Analysis:
 
 
 @router.get("", response_model=list[AnalysisSummaryOut])
-def list_analyses(db: DbDep) -> list[AnalysisSummaryOut]:
+def list_analyses(db: DbDep, settings: SettingsDep) -> list[AnalysisSummaryOut]:
     rows = db.scalars(select(Analysis).order_by(Analysis.created_at.desc())).all()
     return [
         AnalysisSummaryOut(
-            **_status_fields(a),
+            **_status_fields(a, settings),
             mode=AnalysisMode(a.mode),
             title=a.title,
             video_count=len(a.video_links),
@@ -107,7 +115,7 @@ def list_analyses(db: DbDep) -> list[AnalysisSummaryOut]:
 
 
 @router.post("", response_model=AnalysisOut, status_code=201)
-def create_analysis(body: AnalysisCreate, db: DbDep) -> AnalysisOut:
+def create_analysis(body: AnalysisCreate, db: DbDep, settings: SettingsDep) -> AnalysisOut:
     missing = [v.video_id for v in body.videos if db.get(Video, v.video_id) is None]
     if missing:
         raise ApiError(404, "video_not_found", "Some videos do not exist", {"video_ids": missing})
@@ -124,6 +132,8 @@ def create_analysis(body: AnalysisCreate, db: DbDep) -> AnalysisOut:
         video_relation=body.video_relation.value,
         stroke_filter=body.stroke_filter.value,
         focus=body.focus,
+        dominant_hand=body.dominant_hand.value if body.dominant_hand else None,
+        backhand=body.backhand.value if body.backhand else None,
         status=AnalysisStatus.CREATED.value,
         progress=0.0,
     )
@@ -134,21 +144,21 @@ def create_analysis(body: AnalysisCreate, db: DbDep) -> AnalysisOut:
     db.add(analysis)
     db.commit()
     db.refresh(analysis)
-    return _to_out(analysis)
+    return _to_out(analysis, settings)
 
 
 @router.get("/{analysis_id}", response_model=AnalysisOut)
-def get_analysis(analysis_id: str, db: DbDep) -> AnalysisOut:
-    return _to_out(_get(db, analysis_id))
+def get_analysis(analysis_id: str, db: DbDep, settings: SettingsDep) -> AnalysisOut:
+    return _to_out(_get(db, analysis_id), settings)
 
 
 @router.get("/{analysis_id}/status", response_model=AnalysisStatusOut)
-def get_status(analysis_id: str, db: DbDep) -> AnalysisStatusOut:
-    return AnalysisStatusOut(**_status_fields(_get(db, analysis_id)))
+def get_status(analysis_id: str, db: DbDep, settings: SettingsDep) -> AnalysisStatusOut:
+    return AnalysisStatusOut(**_status_fields(_get(db, analysis_id), settings))
 
 
 @router.post("/{analysis_id}/start", response_model=AnalysisStatusOut, status_code=202)
-def start_analysis(analysis_id: str, db: DbDep) -> AnalysisStatusOut:
+def start_analysis(analysis_id: str, db: DbDep, settings: SettingsDep) -> AnalysisStatusOut:
     """Queue the analysis for the worker. Returns immediately (202 Accepted)."""
     a = _get(db, analysis_id)
     if a.status not in STARTABLE:
@@ -167,13 +177,13 @@ def start_analysis(analysis_id: str, db: DbDep) -> AnalysisStatusOut:
     a.started_at = a.finished_at = None
     db.add(ProcessingJob(analysis_id=a.id))
     db.commit()
-    return AnalysisStatusOut(**_status_fields(a))
+    return AnalysisStatusOut(**_status_fields(a, settings))
 
 
-@router.get("/{analysis_id}/videos/{video_id}/artifacts/{name}")
+@router.get("/{analysis_id}/videos/{video_id}/artifacts/{name}", response_model=None)
 def get_artifact(
     analysis_id: str, video_id: str, name: str, db: DbDep, settings: SettingsDep
-) -> FileResponse:
+) -> FileResponse | JSONResponse:
     _get(db, analysis_id)
     filename = ARTIFACT_NAMES.get(name)
     if filename is None:
@@ -186,5 +196,8 @@ def get_artifact(
     path = analysis_video_dir(settings.storage_dir, analysis_id, video_id) / filename
     if not path.is_file():
         raise ApiError(404, "artifact_not_found", f"Artifact '{name}' does not exist (yet)")
+    if name == "report":
+        # Small file; reports written before M1.10 hold absolute paths.
+        return JSONResponse(redact(json.loads(path.read_text()), settings))
     media = "application/json" if filename.endswith(".json") else "video/mp4"
     return FileResponse(path, media_type=media)

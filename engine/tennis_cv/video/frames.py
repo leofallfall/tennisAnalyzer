@@ -40,11 +40,12 @@ def iter_frames(
         raise ValueError("stride must be >= 1")
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
-        raise DecodeError(f"OpenCV could not open video: {path}", details={"path": str(path)})
+        name = Path(path).name
+        raise DecodeError(f"OpenCV could not open video: {name}", details={"file": name})
     try:
         fps = float(cap.get(cv2.CAP_PROP_FPS))
         if fps <= 0:
-            raise DecodeError("Video reports no frame rate", details={"path": str(path)})
+            raise DecodeError("Video reports no frame rate", details={"file": Path(path).name})
         first = int(round(start_s * fps))
         last = None if end_s is None else int(round(end_s * fps))
         emitted = 0

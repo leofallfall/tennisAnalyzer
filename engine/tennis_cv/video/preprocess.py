@@ -2,26 +2,37 @@
 
 The proxy is:
 * rotation applied (pixels are upright, no rotation metadata left),
-* constant frame rate (VFR inputs are resampled to their average rate),
+* constant frame rate (VFR inputs are resampled to their average rate, CFR inputs keep
+  their nominal rate) through FFmpeg's ``fps`` filter,
 * H.264 / yuv420p / faststart MP4 (plays in every browser),
 * long side capped (default 1920 px) to bound processing cost.
 
 Because the proxy is CFR, the timestamp of frame ``i`` is exactly ``i / fps``.
 All downstream timestamps refer to this proxy timeline, which starts at the
-first decoded video frame of the source.
+first decoded video frame of the source (``setpts=PTS-STARTPTS``; a non-zero
+``start_time`` or an audio track starting earlier no longer adds leading frames).
+
+Since M1.10 the frame-rate conversion always goes through the ``fps`` filter, also
+for CFR inputs, so that one documented rule decides which source frame each proxy
+frame shows. ``tennis_cv.video.timemap`` reproduces that rule to map proxy frames
+back to the original (see docs/VIDEO_PIPELINE.md, "Time mapping").
 """
 
 from __future__ import annotations
 
+import logging
 import time
+from fractions import Fraction
 from pathlib import Path
 
 from pydantic import Field
 
 from tennis_cv.common import StrictModel
-from tennis_cv.errors import PreprocessError
+from tennis_cv.errors import PreprocessError, scrub_paths
 from tennis_cv.video.ffmpeg import find_tool, run_tool
 from tennis_cv.video.metadata import VideoMetadata, probe_video
+
+log = logging.getLogger(__name__)
 
 
 class PreprocessOptions(StrictModel):
@@ -41,10 +52,25 @@ class PreprocessResult(StrictModel):
 
 
 def _target_fps(meta: VideoMetadata) -> float | None:
+    """Resampling rate for VFR inputs (their average rate); ``None`` for CFR inputs."""
     if not meta.is_variable_frame_rate:
         return None
     fps = meta.average_fps or meta.nominal_fps
     return round(fps, 3) if fps else None
+
+
+def proxy_frame_rate(meta: VideoMetadata) -> Fraction | None:
+    """Exact rate given to the ``fps`` filter, or ``None`` when the source has no rate.
+
+    VFR: the average rate rounded to 3 decimals (as before M1.10). CFR: the nominal rate
+    as a rational (29.97 -> 30000/1001), so a CFR source is not resampled.
+    """
+    vfr = _target_fps(meta)
+    if vfr:
+        return Fraction(str(vfr))
+    if meta.nominal_fps:
+        return Fraction(meta.nominal_fps).limit_denominator(1001)
+    return None
 
 
 def build_preprocess_command(
@@ -61,9 +87,12 @@ def build_preprocess_command(
     else:
         # libx264 + yuv420p require even dimensions.
         filters.append("scale=trunc(iw/2)*2:trunc(ih/2)*2")
-    fps = _target_fps(meta)
-    if fps:
-        filters.append(f"fps={fps}")
+    # Proxy time 0 = first decoded video frame; one rule (the fps filter) for every input.
+    filters.append("setpts=PTS-STARTPTS")
+    rate = proxy_frame_rate(meta)
+    if rate:
+        # eof_action=pass: the last source frame is never lost to a short final duration.
+        filters.append(f"fps={rate.numerator}/{rate.denominator}:eof_action=pass")
     return [
         find_tool("ffmpeg"),
         "-y",
@@ -109,9 +138,11 @@ def preprocess_video(
     result = run_tool(cmd, timeout_s=opts.timeout_s)
     elapsed = (time.perf_counter() - started) * 1000
     if result.returncode != 0 or not dst_p.is_file():
+        # The full command holds absolute paths: server log only, never the API.
+        log.warning("FFmpeg preprocessing failed: %s", " ".join(cmd))
         raise PreprocessError(
             "FFmpeg preprocessing failed",
-            details={"stderr": result.stderr.strip()[-2000:], "command": " ".join(cmd)},
+            details={"stderr": scrub_paths(result.stderr.strip(), src_s, dst_p)[-2000:]},
         )
     out_meta = probe_video(dst_p)
     return PreprocessResult(

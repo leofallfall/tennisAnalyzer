@@ -11,7 +11,7 @@ from typing import Any
 
 import cv2
 
-from tennis_cv.errors import ModelNotAvailableError
+from tennis_cv.errors import ModelNotAvailableError, PoseRuntimeUnavailableError
 from tennis_cv.pose.base import PoseEstimator
 from tennis_cv.pose.landmarks import LANDMARK_NAMES
 from tennis_cv.pose.models import Keypoint, PoseFrame
@@ -25,6 +25,12 @@ MODEL_URLS: dict[str, str] = {
     for variant in ("lite", "full", "heavy")
 }
 DEFAULT_VARIANT = "full"
+
+
+RUNTIME_HINT = (
+    "On Linux install the system libraries MediaPipe needs: "
+    "sudo apt install libegl1 libgles2 (see README, Prerequisites)."
+)
 
 LIMITATIONS = [
     "Single camera 2D landmarks: out-of-plane motion is foreshortened.",
@@ -62,24 +68,33 @@ class MediaPipePoseEstimator(PoseEstimator):
         path = Path(model_path) if model_path else default_model_path()
         if not path.is_file():
             raise ModelNotAvailableError(
-                f"MediaPipe pose model not found at {path}. "
+                f"MediaPipe pose model '{path.name}' not found in the models directory. "
                 "Run: uv run python scripts/download_models.py",
-                details={"model_path": str(path)},
+                details={"model_file": path.name},
             )
-        import mediapipe as mp  # imported lazily: heavy native module
+        self._landmarker: Any = None
+        try:
+            import mediapipe as mp  # imported lazily: heavy native module
 
-        self.model = path.name
-        self._mp = mp
-        vision = mp.tasks.vision
-        options = vision.PoseLandmarkerOptions(
-            base_options=mp.tasks.BaseOptions(model_asset_path=str(path)),
-            running_mode=vision.RunningMode.VIDEO,
-            num_poses=1,
-            min_pose_detection_confidence=min_detection_confidence,
-            min_pose_presence_confidence=min_presence_confidence,
-            min_tracking_confidence=min_tracking_confidence,
-        )
-        self._landmarker: Any = vision.PoseLandmarker.create_from_options(options)
+            self.model = path.name
+            self._mp = mp
+            vision = mp.tasks.vision
+            options = vision.PoseLandmarkerOptions(
+                base_options=mp.tasks.BaseOptions(model_asset_path=str(path)),
+                running_mode=vision.RunningMode.VIDEO,
+                num_poses=1,
+                min_pose_detection_confidence=min_detection_confidence,
+                min_pose_presence_confidence=min_presence_confidence,
+                min_tracking_confidence=min_tracking_confidence,
+            )
+            # The native library (and libEGL on Linux) is loaded here, not at import.
+            self._landmarker = vision.PoseLandmarker.create_from_options(options)
+        except (OSError, ImportError) as exc:
+            raise PoseRuntimeUnavailableError(
+                f"The MediaPipe runtime could not be loaded ({type(exc).__name__}). "
+                + RUNTIME_HINT,
+                details={"cause": _short_cause(exc)},
+            ) from exc
         self._last_ts_ms = -1
 
     def estimate(self, frame: Frame) -> PoseFrame:
@@ -91,7 +106,11 @@ class MediaPipePoseEstimator(PoseEstimator):
         self._last_ts_ms = ts_ms
         result = self._landmarker.detect_for_video(image, ts_ms)
         if not result.pose_landmarks:
-            return PoseFrame(frame_index=frame.index, timestamp_s=frame.timestamp_s, detected=False)
+            return PoseFrame(
+                frame_index=frame.index,
+                timestamp_s=frame.timestamp_s,
+                detected=False,
+            )
         landmarks = result.pose_landmarks[0]
         keypoints = [
             Keypoint(
@@ -115,6 +134,36 @@ class MediaPipePoseEstimator(PoseEstimator):
         if self._landmarker is not None:
             self._landmarker.close()
             self._landmarker = None
+
+
+def _short_cause(exc: BaseException) -> str:
+    """First line of the error, with directories stripped from any shared-object path."""
+    first = (str(exc).splitlines() or [""])[0]
+    return " ".join(Path(tok).name if "/" in tok or "\\" in tok else tok for tok in first.split())
+
+
+_runtime_ok: bool = False
+
+
+def check_pose_runtime(model_path: str | Path | None = None) -> tuple[bool, str | None]:
+    """Create and close a landmarker once to prove the native runtime really works.
+
+    Returns ``(available, reason)``. A success is cached for the process lifetime (it
+    costs about a second); a failure is re-checked on every call so that installing the
+    missing libraries or model is picked up without a restart.
+    """
+    global _runtime_ok
+    if _runtime_ok:
+        return True, None
+    try:
+        with MediaPipePoseEstimator(model_path):
+            pass
+    except ModelNotAvailableError as exc:
+        return False, exc.message
+    except PoseRuntimeUnavailableError as exc:
+        return False, f"{exc.message} Cause: {exc.details.get('cause', '')}".strip()
+    _runtime_ok = True
+    return True, None
 
 
 def _unit(v: float | None) -> float | None:

@@ -16,6 +16,7 @@ ARTIFACT_NAMES = {
     "overlay": "overlay.mp4",
     "pose": "pose.json",
     "report": "report.json",
+    "timemap": "timemap.json",
 }
 CHUNK = 1024 * 1024
 

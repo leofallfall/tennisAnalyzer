@@ -98,11 +98,15 @@ def test_analysis_lifecycle(client: TestClient, fake_worker: Worker, basic_video
     assert report["quality"]["observability"] == "not_observable"
     assert "stroke_detection" in report["not_performed"]
     artifacts = analysis["videos"][0]["artifacts"]
-    assert set(artifacts) == {"proxy", "pose", "overlay", "report"}
+    assert set(artifacts) == {"proxy", "pose", "overlay", "report", "timemap"}  # timemap: M1.10
     overlay = client.get(artifacts["overlay"])
     assert overlay.status_code == 200 and overlay.headers["content-type"] == "video/mp4"
     pose = client.get(artifacts["pose"]).json()
     assert len(pose["frames"]) == 60
+    timemap = client.get(artifacts["timemap"]).json()
+    assert timemap["summary"]["exact_time_sync"] is False
+    assert timemap["proxy_to_source"] == list(range(60))
+    assert report["time_mapping"]["proxy_frame_count"] == 60
 
 
 def test_failed_job_reports_structured_error(

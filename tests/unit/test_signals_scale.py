@@ -109,20 +109,45 @@ def test_only_good_samples_measure_the_torso() -> None:
     np.testing.assert_allclose(sc.length_px[np.isfinite(sc.length_px)], 400.0)
 
 
-def test_window_does_not_cross_segments() -> None:
-    t = np.arange(60) / FPS
-    seg = np.r_[np.zeros(30, np.int64), np.ones(30, np.int64)]
-    tb = TimeBase(
+def _tb(seg: list[int]) -> TimeBase:
+    n = len(seg)
+    t = np.arange(n) / FPS
+    return TimeBase(
         basis=TimeBasis.PROXY,
         map_status=MapStatus.MISSING,
-        map_problems=(), nominal_interval_s=1 / FPS, proxy_frames=np.arange(60),
+        map_problems=(), nominal_interval_s=1 / FPS, proxy_frames=np.arange(n),
         source_frames=None, times_s=t, interval_s=np.r_[np.nan, np.diff(t)],
-        interval_status=(), segment=seg, repeats_removed=0,
+        interval_status=(), segment=np.asarray(seg, dtype=np.int64), repeats_removed=0,
     )  # fmt: skip
+
+
+def test_window_does_not_cross_segments() -> None:
+    tb = _tb([0] * 30 + [1] * 30)
     measured = np.r_[np.full(30, 300.0), np.full(30, 500.0)]
     sc = stabilise(tb, measured)
     np.testing.assert_array_equal(sc.length_px[:30], 300.0)
     np.testing.assert_array_equal(sc.length_px[30:], 500.0)
+
+
+def test_short_segments_and_few_samples_at_segment_edges() -> None:
+    """At 30 fps a 1 s window expects 31 samples; 50 % -> at least 16 measurements.
+    A segment edge leaves only half a window (16 samples) on one side."""
+    # a 15-sample segment can never reach 16 measurements: no scale at all;
+    # a 16-sample segment just reaches it on every sample
+    sc = stabilise(_tb([0] * 15 + [1] * 16 + [2] * 40), np.full(71, 300.0))
+    assert all(s is ScaleState.INSUFFICIENT for s in sc.state[:15])
+    assert np.all(np.isnan(sc.length_px[:15]))
+    assert all(s is ScaleState.OK for s in sc.state[15:31])
+    assert sc.measures_in_window[15] == 16 and sc.measures_in_window[30] == 16
+    # first samples of a long segment: one missing measurement near the edge is enough
+    # to lose the scale on the edge sample, not on the next ones
+    measured = np.full(71, 300.0)
+    measured[31 + 3] = np.nan
+    sc = stabilise(_tb([0] * 15 + [1] * 16 + [2] * 40), measured)
+    assert sc.state[31] is ScaleState.INSUFFICIENT and sc.measures_in_window[31] == 15
+    assert sc.state[32] is ScaleState.OK and sc.measures_in_window[32] == 16
+    # the last samples of the segment behave symmetrically
+    assert sc.state[70] is ScaleState.OK and sc.measures_in_window[70] == 16
 
 
 def test_params_validation_and_shape_check() -> None:

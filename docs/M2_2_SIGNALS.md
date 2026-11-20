@@ -272,11 +272,18 @@ sc.to_torso_units(distance_px)  # NaN where the scale is missing; pixels untouch
   the time-base segment. It removes per-frame noise, isolated wrong hips/shoulders and the
   brief shortening of the projected torso during a stroke (~0.3 s), and follows changes
   of camera distance slower than about half a second; a linear change is followed with
-  no lag (test). Faster changes are smoothed over ~0.5 s.
-* **Missing:** fewer than `min_fraction` (50 %) of the window's expected samples with a
-  measurement → `insufficient`, `length_px` NaN, every normalised value NaN.
-* **Spread:** `relative_spread` = MAD / median in the window, reported for later use, not
-  used to reject (no validated threshold).
+  no lag (test). Faster changes are smoothed over ~0.5 s. The window is **centred, so it
+  uses future samples**: suitable for offline session analysis, **not causal**, not usable
+  as is for real-time analysis.
+* **Missing:** fewer than `min_fraction` (50 %) of the samples of a *full* window with a
+  measurement → `insufficient`, `length_px` NaN, every normalised value NaN. At 30 fps:
+  ≥ 16 of 31. Consequences (tested): a segment of 15 samples never gets a scale, one of
+  16 gets it on every sample; at a segment edge only half a window (16 samples) is
+  available, so one missing measurement there removes the scale on the edge sample.
+* **Spread:** `relative_spread` = MAD / median in the window: an indicator of
+  **geometric dispersion only**, not an autonomous measure of reliability nor of correct
+  player identification. A scale can be stable and belong to the wrong person (§5.1,
+  IMG_5098_1). Reported for later use, not used to reject (no validated threshold).
 
 Synthetic checks (`tests/unit/test_signals_scale.py`): ±3 px noise and 10 % wrong hips →
 error < 2 %; a 200 → 300 px approach in 3 s is followed exactly; hips hidden for 2 s →

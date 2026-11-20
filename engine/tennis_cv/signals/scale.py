@@ -15,14 +15,20 @@ Rules
   ~1 s removes per-frame noise, isolated wrong keypoints and the short shortening of the
   projected torso during a stroke (bending, rotation: ~0.3 s), while it follows changes of
   distance from the camera that take longer than about half a window (a linear change
-  is followed without lag).
+  is followed without lag). The window is **centred**: it uses samples *after* the
+  current one. This is fine for offline analysis of a recorded session; it is not a
+  causal method and cannot be used as is in real time.
 * **No value without data.** If the window holds fewer than ``min_fraction`` of the
-  samples it should hold (or no measurement), the scale is missing (``INSUFFICIENT``) and
-  every value normalised with it is NaN.
+  samples a full window should hold (or no measurement), the scale is missing
+  (``INSUFFICIENT``) and every value normalised with it is NaN. The count is against the
+  *full* window, so a segment shorter than ``min_fraction`` of it never gets a scale, and
+  at a segment edge (half a window available) every missing measurement counts.
 * **Spread.** ``relative_spread`` = median absolute deviation / median in the window: a
   high value means the projected torso changed a lot inside the window (posture, a wrong
-  keypoint, a person switch), i.e. a less trustworthy scale. It is reported, not used to
-  reject samples (no validated threshold).
+  keypoint, a person switch). It is an indicator of *geometric dispersion* only: it is
+  not a measure of reliability on its own and says nothing about whether the scale
+  belongs to the right player (a scale can be stable and belong to the wrong person, as
+  seen in IMG_5098_1). It is reported, not used to reject samples.
 
 Pixel coordinates are never replaced: normalised values are computed on request.
 """

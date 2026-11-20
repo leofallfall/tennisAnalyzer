@@ -1,8 +1,8 @@
 # M2.2 — Signal processing (pose signals)
 
 Status (2026-11-20): **intervention 1 (time base) merged; intervention 2 (temporal
-smoothing of positions) done; intervention 3 (two quality levels, LOW from 0.4) done; intervention 4 (torso scale) under
-review** (next
+smoothing of positions) done; intervention 3 (two quality levels, LOW from 0.4) done; intervention 4 (torso scale)
+done** (next
 steps: ADR-019); derivatives (velocities,
 accelerations), peaks, body-frame normalisation and the other signals are **not
 implemented**. Each intervention

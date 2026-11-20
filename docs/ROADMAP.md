@@ -23,6 +23,12 @@ intervention 2 (smoothing of positions, §4) done; the remaining interventions f
 (two-level visibility, torso scale, apparent 2D speed, complementary signals), each
 reviewed before the next.
 
+**Product direction: Session Analysis first** (approved 2026-11-20, ADR-020): the session
+report becomes M3 and single-stroke deep analysis M4; session indicators are computed on
+every stroke, anchored to the stroke event, validated before any issue is shown.
+**M2.3 exit criterion approved** (2026-11-20, ADR-021); M2.3 implementation still waits for
+the end of M2.2 and an explicit start.
+
 **Personal AI analysis (Claude Code, no API): plumbing done** (2026-11-18, ADR-013,
 `docs/AI_ANALYSIS.md`). Evidence Packs, the `/analizza-sessione` skill, validated import and
 the UI flow work end to end. They only produce technical feedback once M2 provides strokes.
@@ -70,21 +76,29 @@ be confirmed or revised after the M2.1 data** (D11).
 | Step | Goal | Status |
 | --- | --- | --- |
 | M2.1 | Dataset, labels, `eval_strokes.py`, input visibility report (also M1 item 11) | ✅ single-player dataset (ADR-018) |
-| M2.2 | Kinematic signals (time base, smoothing, two-level visibility, torso scale, apparent 2D speed, shoulder/hip lines, hand distance, wrist vs torso; ADR-019) | in progress: #1 time base, #2 smoothing, #3 quality levels done; #4 torso scale under review; rest per ADR-019 |
-| M2.3 | Candidate events (relative speed peaks + complementary signals, grouping, confidence, abstention; NumPy peaks) + `strokes.json`, evaluated on the dataset; exit criterion agreed first | not started (needs approval) |
+| M2.2 | Kinematic signals (time base, smoothing, two-level visibility, torso scale, apparent 2D speed, shoulder/hip lines, hand distance, wrist vs torso; ADR-019) | in progress: #1 time base, #2 smoothing, #3 quality levels, #4 torso scale done; rest per ADR-019 |
+| M2.3 | Candidate events (relative speed peaks on both wrists grouped into one event per gesture, complementary signals, confidence, abstention; NumPy peaks) + `strokes.json` with per-region observability and a decision trace; peak-to-impact offset measured on the 35 labels (the peak stays a candidate event) | exit criterion approved (ADR-021); not started (after M2.2) |
 | M2.4 | Forehand/backhand with levels and uncertainty reasons | not started |
-| M2.5 | Player selection by tap (verification first), identity jumps; `num_poses` > 1 if M2.1 data require it | not started |
+| M2.5 | Player verification, **moved before M3** (ADR-020): mark strokes that may belong to another person and exclude them from statistics when not reliable, with traceable reasons; no identity recognition for now. Later: selection by tap, `num_poses` > 1 if data require it | not started |
 | M2.6 | Worker step, API artifact, contracts, UI list, capabilities | not started |
 | M2.7 | (conditional) 10 fps scan + dense pose around candidates, only if measured cost requires it | conditional |
 | M2.8 | (conditional) other pose estimator (e.g. rtmlib) behind `PoseEstimator`, only past an agreed error threshold | conditional |
 
-### M3 — Single stroke deep analysis
-Phase segmentation with user-adjustable boundaries; first validated 2D metrics
-(elbow angle, knee flexion, contact height/distance); evidence frames; multi-angle sync.
+### M3 — Session Analysis (was M4; ADR-020)
+The product's entry point: recurring issues of a session for forehand, backhand and both,
+with linked evidence strokes and personal reference executions. Steps (each after approval):
+M3.1 validation of candidate screening indicators (availability, geometric correctness,
+stability, view compatibility, assessed separately; a 20-overlay stratified visual sample
+per indicator and view); M3.2 indicators on every stroke (`stroke_features.json`); M3.3
+issue catalogue and `session_findings.json` (results on four separate levels: personal
+variation, deviation from the usual range, possible technical issue, technical error backed
+by a validated measurement); M3.4 session report UI and AI pack with real data.
+Gate: the M2.3 confirmation video (ADR-021) before M3.1.
 
-### M4 — Session report
-Aggregation with observable denominators; issue identification and ranking; filters;
-issue → stroke navigation.
+### M4 — Single stroke deep analysis (was M3; ADR-020)
+On demand from a session issue or stroke, reusing session artifacts: phase segmentation with
+user-adjustable boundaries; time series; comparison of an issue stroke with a personal
+reference; further validated 2D metrics; evidence frames; multi-angle sync.
 
 ### M5 — Serve
 Serve detection, phases (stance, toss, trophy, drop, contact, follow-through), metrics.
@@ -115,7 +129,7 @@ Comparability checks, normalisation, phase-aligned comparison, professional refe
 
 ## Dependencies
 
-M1 → M2 → M3 → M4; M3 → M5; M1 → M6 (parallel research); M4 + M3 → M7; M3 + M4 → M8.
+M1 → M2 → M3 → M4; M4 → M5; M1 → M6 (parallel research); M4 + M3 → M7; M3 + M4 → M8.
 
 ## Priorities
 

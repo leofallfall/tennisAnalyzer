@@ -66,15 +66,17 @@ class SmoothingParams:
     the time base's nominal interval (0.2 s -> 7 samples at 30 fps, 5 at 24 fps), never
     fewer than ``polyorder + 2`` (a fit with no redundancy does not smooth).
     ``good_visibility``: approved starting threshold (0.5), not validated.
-    ``usable_visibility``: lower bound of ``LOW``. Provisional default = 0.5, i.e. no
-    sample is ``LOW``: on the 12 checked impact frames with a hitting-wrist score below
-    0.5, the drawn wrist was on the hand once (docs/M2_2_SIGNALS.md 4.3), so the data do
-    not yet support a lower value. Configurable; not validated."""
+    ``usable_visibility``: lower bound of ``LOW``. Provisional 0.4, chosen on the
+    developer's check of 30 low-score wrists away from impacts (0.4-0.5: 7 of 8
+    judgeable on the hand; 0.3-0.4: 4 of 6; 0.2-0.3: 2 of 3 plus one on another
+    person). Hidden right wrists at two-handed backhand impacts are wrong in the same
+    band (0 of 5): LOW is not a guarantee. Single player; not validated
+    (docs/M2_2_SIGNALS.md 4.3)."""
 
     window_s: float = 0.2
     polyorder: int = 2
     good_visibility: float = 0.5
-    usable_visibility: float = 0.5
+    usable_visibility: float = 0.4
 
     def __post_init__(self) -> None:
         if not (math.isfinite(self.window_s) and self.window_s > 0):

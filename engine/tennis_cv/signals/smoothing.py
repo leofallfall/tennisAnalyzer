@@ -124,10 +124,14 @@ class RawKeypointSignal:
 class SmoothedSignal:
     """One smoothed series. ``raw`` is the input, untouched; ``smoothed`` is NaN wherever
     ``state`` is UNRELIABLE or TOO_SHORT. ``run`` = run id (-1 for unreliable samples).
-    ``low_in_window`` = LOW samples used by the fit of each value (0 when no value)."""
+    ``low_in_window`` = LOW samples used by the fit of each value (0 when no value).
+    ``derivative`` = first derivative of the same local polynomial at the sample, in
+    input units per second of real time (intervention 5); NaN where ``smoothed`` is NaN,
+    and always NaN when ``polyorder`` is 0 (a constant has no slope to report)."""
 
     raw: FloatArray
     smoothed: FloatArray
+    derivative: FloatArray
     state: tuple[SmoothState, ...]
     run: IntArray
     low_in_window: IntArray
@@ -220,6 +224,7 @@ def smooth_series(
         raise ValueError("low must have the same length as times")
     reliable = reliable & np.isfinite(values) & np.isfinite(times_s)
     low_in_window = np.zeros(n, dtype=np.int64)
+    derivative = np.full(n, np.nan)
     run = find_runs(segment, reliable)
     smoothed = np.full(n, np.nan)
     states = [SmoothState.UNRELIABLE] * n
@@ -254,11 +259,14 @@ def smooth_series(
         rhs = np.einsum("mwi,mw->mi", vander, values[win])
         coeffs = np.linalg.solve(normal, rhs[..., None])[..., 0]
         smoothed[tgt] = coeffs[:, 0]  # polynomial value at dt = 0
+        if polyorder >= 1:  # slope at dt = 0, back from scaled time to seconds
+            derivative[tgt] = coeffs[:, 1] / time_scale_s
         low_in_window[tgt] = (low & reliable)[win].sum(axis=1)
 
     return SmoothedSignal(
         raw=values.copy(),
         smoothed=smoothed,
+        derivative=derivative,
         state=tuple(states),
         run=run,
         low_in_window=low_in_window,

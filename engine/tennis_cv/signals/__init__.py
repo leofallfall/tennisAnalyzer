@@ -5,7 +5,8 @@ Intervention 1: :mod:`~tennis_cv.signals.timebase`, the time base of the pose sa
 Interventions 2-3: :mod:`~tennis_cv.signals.smoothing`, keypoint quality (good / low but
 usable / unreliable) and local polynomial smoothing on real times within runs.
 Intervention 4: :mod:`~tennis_cv.signals.scale`, robust torso length (2D scale).
-Derivatives and other signals are not implemented.
+Intervention 5: :mod:`~tennis_cv.signals.velocity`, apparent 2D speed from the derivative
+of the same local fit. Accelerations and other signals are not implemented.
 See docs/M2_2_SIGNALS.md.
 """
 
@@ -40,10 +41,17 @@ from tennis_cv.signals.timebase import (
     check_timemap,
     classify_intervals,
 )
+from tennis_cv.signals.velocity import (
+    KeypointVelocity,
+    VelocityState,
+    keypoint_velocity,
+    velocity_from_smoothed,
+)
 
 __all__ = [
     "IntervalStatus",
     "KeypointQuality",
+    "KeypointVelocity",
     "MapStatus",
     "RawKeypointSignal",
     "ScaleParams",
@@ -56,15 +64,18 @@ __all__ = [
     "TimeBaseParams",
     "TimeBasis",
     "TorsoScale",
+    "VelocityState",
     "build_timebase",
     "check_timemap",
     "classify_intervals",
     "classify_quality",
     "extract_keypoint",
     "find_runs",
+    "keypoint_velocity",
     "smooth_keypoint",
     "smooth_series",
     "stabilise",
     "torso_measurements",
     "torso_scale",
+    "velocity_from_smoothed",
 ]

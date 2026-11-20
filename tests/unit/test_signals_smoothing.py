@@ -12,10 +12,12 @@ import pytest
 
 from tennis_cv.pose.models import Keypoint, PoseFrame, PoseSequence
 from tennis_cv.signals import (
+    KeypointQuality,
     SmoothedSignal,
     SmoothingParams,
     SmoothState,
     build_timebase,
+    classify_quality,
     extract_keypoint,
     smooth_keypoint,
     smooth_series,
@@ -199,3 +201,67 @@ def test_keypoint_on_real_time_base() -> None:
     runs = sm.x.run[sm.x.run >= 0]
     for r in np.unique(runs):
         assert np.unique(tb.segment[sm.x.run == r]).size == 1
+
+
+# --- intervention 3: two quality levels ---
+
+G, LO, UN = KeypointQuality.GOOD, KeypointQuality.LOW, KeypointQuality.UNRELIABLE
+
+
+def test_quality_levels() -> None:
+    x = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 1.0, np.nan])
+    vis = np.array([0.9, 0.5, 0.49, 0.3, 0.1, np.nan, 0.9])
+    two = SmoothingParams(usable_visibility=0.3)
+    assert classify_quality(x, x, vis, two) == (G, G, LO, LO, UN, UN, UN)
+    # provisional default: usable == good, so no sample is LOW
+    assert classify_quality(x, x, vis) == (G, G, UN, UN, UN, UN, UN)
+    with pytest.raises(ValueError):
+        SmoothingParams(usable_visibility=0.6)
+
+
+def test_low_samples_join_runs_and_are_counted_unreliable_break() -> None:
+    t = np.arange(30) * DT
+    v = 20 * np.sin(t * 3)
+    low = np.zeros(30, dtype=bool)
+    low[10:13] = True
+    rel = np.ones(30, dtype=bool)
+    rel[20] = False
+    s = smooth_series(t, v, np.zeros(30, np.int64), rel, W, P, DT, low)
+    assert s.run[:20].tolist() == [0] * 20 and s.run[20] == -1 and s.run[21] == 1
+    assert np.all(np.isfinite(s.smoothed[10:13]))  # LOW samples get a value
+    assert s.state[11] is SmoothState.SMOOTHED  # and do not create edges
+    assert s.low_in_window[11] == 3 and s.low_in_window[5] == 0
+    assert s.low_in_window[20] == 0 and s.state[20] is SmoothState.UNRELIABLE
+    # same values as treating them as GOOD: LOW changes the label, not the fit
+    s_good = smooth_series(t, v, np.zeros(30, np.int64), rel, W, P, DT)
+    np.testing.assert_array_equal(s.smoothed, s_good.smoothed)
+
+
+def test_low_quality_end_to_end_keeps_raw_and_quality() -> None:
+    n = 30
+    frames = [
+        PoseFrame(
+            frame_index=k, timestamp_s=k / FPS, detected=True,
+            keypoints=[_kp("left_wrist", 0.3 + 0.002 * k, 0.4, 0.4 if 12 <= k < 15 else 0.9)],
+        )
+        for k in range(n)
+    ]  # fmt: skip
+    poses = PoseSequence(
+        estimator="t", model="t", image_width=720, image_height=1280, fps=FPS,
+        frame_stride=1, frames=frames,
+    )  # fmt: skip
+    tb = build_timebase(poses)
+    two = SmoothingParams(usable_visibility=0.3)
+    raw = extract_keypoint(poses, tb, "left_wrist", two)
+    assert raw.quality[12:15] == (LO,) * 3 and raw.count(G) == n - 3
+    sm = smooth_keypoint(raw, two)
+    assert sm.x.run.max() == 0 and np.all(np.isfinite(sm.x.smoothed[12:15]))
+    assert sm.x.low_in_window[13] == 3
+    # default (usable = good = 0.5): the same samples are unreliable and split the run
+    raw_d = extract_keypoint(poses, tb, "left_wrist")
+    sm_d = smooth_keypoint(raw_d)
+    assert raw_d.quality[12:15] == (UN,) * 3 and sm_d.x.run.max() == 1
+    assert np.all(np.isnan(sm_d.x.smoothed[12:15]))
+    # raw coordinates and visibility are kept whatever the quality
+    np.testing.assert_array_equal(raw.x_px, raw_d.x_px)
+    np.testing.assert_array_equal(raw_d.visibility[12:15], [0.4, 0.4, 0.4])

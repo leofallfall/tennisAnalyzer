@@ -243,7 +243,8 @@ as single-player. M1 item 11 stays partly open.
 **Context:** M2.2 #1 (time base) and #2 (smoothing) showed: timing artefacts are solved
 (regenerated maps); MediaPipe VIDEO tracking keeps the peak frame but not the amplitude
 (0.4–1.7×); with visibility ≥ 0.5 as a hard switch, wrists have a value on only 19–72 % of
-samples, although M2.1 found wrists placed correctly at scores of 0.35.
+samples (M2.1: of 12 checked right wrists below 0.5, one was on the hand; see
+`M2_2_SIGNALS.md` §4.3).
 **Decision (approved by the developer):**
 - Visibility: two quality levels, *good* and *low but usable*, instead of one switch at 0.5.
   Raw coordinates, visibility, quality and smoothing state are always kept. Unreliable

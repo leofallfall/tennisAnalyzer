@@ -1,7 +1,8 @@
 # M2.2 — Signal processing (pose signals)
 
 Status (2026-11-20): **intervention 1 (time base) merged; intervention 2 (temporal
-smoothing of positions) done** (next steps: ADR-019); derivatives (velocities,
+smoothing of positions) done; intervention 3 (two quality levels) under review** (next
+steps: ADR-019); derivatives (velocities,
 accelerations), peaks, body-frame normalisation and the other signals are **not
 implemented**. Each intervention
 is reviewed before the next one starts. Scope (approved 2026-11-20): signals only, NumPy
@@ -118,9 +119,9 @@ sm = smooth_keypoint(raw)  # SmoothedKeypoint: raw + x/y SmoothedSignal
 
 **Raw signal.** `x_px`, `y_px` = MediaPipe's normalised `x`, `y` × image width / height
 (same unit on both axes), exactly as written in `pose.json`; NaN only when the pose was
-not detected or the keypoint is absent. `reliable` = detected, finite and
-`visibility >= min_visibility` (0.5, approved starting value, not validated). Raw values
-are never overwritten: `SmoothedSignal.raw` is a copy next to `smoothed`.
+not detected or the keypoint is absent. Each sample has a quality (§4.3); smoothing uses
+the usable ones (`good` or `low_but_usable`). Raw values and visibility are never
+overwritten: `SmoothedSignal.raw` is a copy next to `smoothed`.
 
 **Method.** For every sample *i* a polynomial of order `polyorder` (2) is fitted by least
 squares to the `window` samples around it, in `t - t_i` seconds from the time base (real,
@@ -173,7 +174,9 @@ biomechanical accuracy.
   for two-handed backhands): 31 `smoothed`, 1 `edge`, 3 `unreliable` (visibility < 0.5)
   at the impact sample; 23/35 windows of ±10 samples have a value on every sample. With
   the threshold at 0 it would be 34 + 1 and 34/35: the 0.5 threshold is the main source of
-  holes around impacts (M2.1 found wrists placed correctly with scores of 0.35).
+  holes around impacts. (Correction: an earlier note said M2.1 "found wrists placed
+  correctly with scores of 0.35"; that was **one** case out of 12 checked below 0.5, see
+  §4.3.)
 
 ### 4.2 Limits
 
@@ -184,11 +187,57 @@ biomechanical accuracy.
   excursions (< ~0.07 s) are attenuated.
 * `edge` samples are valid but noisier; `too_short` runs are lost rather than smoothed with
   a smaller window (deliberately conservative).
-* The visibility threshold is per keypoint score and unvalidated; it discards many wrist
-  samples (see 4.1). Choosing it is a later, data-based decision.
+* The visibility thresholds are per keypoint score and unvalidated (§4.3).
+
+### 4.3 Keypoint quality: two levels (intervention 3)
+
+| Quality | Rule | In fits / runs | Smoothed value |
+|---|---|---|---|
+| `good` | visibility ≥ `good_visibility` (0.5) | yes | yes |
+| `low_but_usable` | `usable_visibility` ≤ visibility < `good_visibility` | yes, does **not** break runs | yes, and `low_in_window` counts the LOW samples each fit used |
+| `unreliable` | not detected, keypoint or visibility missing, non-finite, or visibility < `usable_visibility` | no, breaks runs | NaN (never interpolated) |
+
+The quality is kept per sample in `RawKeypointSignal.quality`, next to raw coordinates
+and visibility; the smoothing state stays in `SmoothedSignal.state`. A LOW sample changes
+the label, not the fit: the smoothed values are those obtained treating it as good.
+
+**Choice of `usable_visibility` (provisional default = 0.5, i.e. LOW is empty).** The only
+ground truth available is the M2.1 human check of the drawn hitting (right) wrist at the
+impact frame (`overlay_wrist`, 30 of 35 checked):
+
+| Right-wrist score at impact | On the hand | Elsewhere | Not drawn / missing |
+|---|---|---|---|
+| ≥ 0.5 | 18 | 0 | 0 |
+| 0.35–0.5 | 1 (0.353) | 6 (0.383–0.497) | 1 (0.484) |
+| < 0.35 | 0 | 2 | 2 |
+
+So below 0.5 the drawn wrist was on the hand 1 time in 12. All 12 are backhands with the
+right hand hidden behind the body, so this sample says little about low scores in other
+situations, but it gives no support to any lower threshold. A second, indirect check does
+not help either: the residual between raw and smoothed positions is almost the same in
+every visibility band (median 0.016–0.036 shoulder widths), because VIDEO-mode tracking
+keeps even wrong positions smooth; temporal coherence cannot separate right from wrong.
+Hence the default keeps LOW empty, documented as provisional. The mechanism is in place
+and the value is a parameter: choosing a lower one needs targeted checks of low-score
+wrists (e.g. the non-hitting wrist on forehands).
+
+**Distribution on the 13 videos** (share of time-base samples; "with value" = `smoothed`
++ `edge`; observed behaviour, not validation; ~23 % of samples have no pose at all, see
+shoulders):
+
+| | Good | Low @0.35 | Low @0.2 | With value @0.5 / @0.35 / @0.2 |
+|---|---|---|---|---|
+| Right wrist | 50.1 % | 8.7 % | 18.3 % | 49.0 / 57.4 / 66.9 % |
+| Left wrist | 38.0 % | 11.5 % | 23.9 % | 37.1 / 48.5 / 60.8 % |
+| Right shoulder | 77.3 % | 0 % | 0 % | 76.0 % at every threshold |
+| Left hip | 77.3 % | 0 % | 0 % | 75.9 % at every threshold |
+
+Per video, right wrist good 41–78 %, left wrist 26–60 %; side-view clips (IMG_4912,
+Timeline_1/2) have few low-score right-wrist samples (1.5–3.6 % at 0.35).
 
 ## 5. Not implemented yet (next interventions, after review)
 
 Derivatives (velocity, acceleration) with explicit reliability states, scale normalisation
 (`speed_2d_torso_per_s` is a 2D scale normalisation by torso length per second, not a 3D
-speed), peaks, per-player hand/backhand configuration for wrist selection.
+speed), per-player hand/backhand configuration for wrist selection (ADR-019: #4 torso
+scale, #5 apparent 2D speed, #6 complementary signals; peaks move to M2.3).

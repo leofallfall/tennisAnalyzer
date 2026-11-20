@@ -210,3 +210,30 @@ evaluation tooling (`tennis_cv.evaluation`) lives in the engine as a pure librar
 by `scripts/eval_strokes.py`, so it is typed and tested like the rest but never runs in
 production. Labels use the proxy frame index printed on `overlay.mp4`, so no annotation tool
 and no time conversion are needed.
+
+### ADR-018 Personal-first development and validation (2026-11-20)
+**Context:** M2.1 produced a first real dataset of one player (the developer): 6 clips, 35
+impacts, one indoor venue, 30 fps. A representative dataset (other players, venues, frame
+rates, ≥ 5 dev and ≥ 5 test clips from different sessions) would take months to collect.
+**Decision:**
+- Priority: build a tool that works reliably on the developer's own tennis first. The
+  current M2.1 dataset is enough to start M2.2. More of his sessions, and friends' clips when
+  available, are added as extra checks, not as a blocker.
+- Every report states the limit: one player; visibility results reflect his body and his
+  recording conditions; generalisation to other players is not shown; no result is a
+  general validation of the system.
+- The software stays player-independent: dominant hand and backhand are per-player inputs;
+  measurements are normalised to body proportions when technically possible; detection rules
+  contain no coordinates or physical traits of a specific body; personal data stay separate
+  from algorithm parameters; new players and datasets can be added without rewriting the
+  engine. No calibration system or multi-user features are added for this.
+- Signal processing must not treat proxy frames as equally spaced: sample times come from
+  `timemap.json`, repeated proxy frames are removed or marked, and a derivative over an
+  irregular or unreliable interval is reported as unreliable or non-observable rather than
+  as motion (timing artefacts are not biomechanics).
+**Alternatives:** collect 10–20 sessions including other players before M2.2 (more general
+evidence, months of delay for a personal tool); tune the engine to this player only (faster
+first results, but a rewrite for anyone else).
+**Consequences:** thresholds tuned in M2.2–M2.4 may encode this player's style and must be
+re-checked when other players' clips arrive. Accuracy figures, when they exist, are labelled
+as single-player. M1 item 11 stays partly open.

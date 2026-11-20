@@ -1,6 +1,6 @@
 # Roadmap
 
-## Current status (2026-11-19)
+## Current status (2026-11-20)
 
 **M0 Foundation: complete.** Monorepo, docs, web app, API, worker, engine interfaces,
 first pose experiment, tests. **M1 is in progress**: all functional pieces exist and
@@ -13,9 +13,12 @@ in System Status, proxy → original time map, smaller/compressed `pose.json`, d
 and backhand persisted.
 
 **M2.0 stroke-recognition design: approved** (2026-11-19, decisions D1–D11, summarised in
-ADR-017). **M2.1 dataset and labels: tooling done, dataset to be collected**
-(`docs/M2_1_DATASET.md`); M2.1 also fulfils M1 item 11 (D1). Next: label the real clips and
-read the visibility report; M2.2 starts only after a further approval.
+ADR-017). **M2.1 dataset and labels: done for the personal prototype** (2026-11-20,
+`docs/M2_1_DATASET.md` §9): 6 clips, 35 labelled impacts, **one player** (the developer).
+**Personal-first priority** (ADR-018): the prototype is developed and checked on the
+developer's own tennis first; validation on other players comes later and is not claimed.
+**M2.2 (signal processing only) approved** on 2026-11-20; it starts once PR #1 and PR #2
+are merged and the branch is aligned with `main`.
 
 **Personal AI analysis (Claude Code, no API): plumbing done** (2026-11-18, ADR-013,
 `docs/AI_ANALYSIS.md`). Evidence Packs, the `/analizza-sessione` skill, validated import and
@@ -39,8 +42,9 @@ Acceptance criteria:
 9. ✅ Basic video quality information available.
 10. ✅ Frontend displays the uploaded video and its processing status.
 10b. ✅ **M1.10 — technical fixes before validation** (see `docs/M1_10_TECHNICAL_FIXES.md`).
-11. ⏳ **Validated on real amateur smartphone tennis clips: carried out as M2.1** (D1;
-    10–20 labelled clips to start, `docs/M2_1_DATASET.md`). Original scope:
+11. ◐ **Validated on real amateur smartphone tennis clips: carried out as M2.1** (D1).
+    Done for one player (6 clips, 35 impacts, `docs/M2_1_DATASET.md` §9); the broader scope
+    below stays open and is not a blocker for the personal prototype (ADR-018). Original scope:
     ≥ 20 real amateur smartphone tennis clips covering side/behind
     views, 30/60/120/240 fps, portrait/landscape, indoor/outdoor, left/right-handed.
     Record detection rate, visual skeleton accuracy on wrists/elbows during the swing,
@@ -62,8 +66,8 @@ be confirmed or revised after the M2.1 data** (D11).
 
 | Step | Goal | Status |
 | --- | --- | --- |
-| M2.1 | Dataset, labels, `eval_strokes.py`, input visibility report (also M1 item 11) | ⏳ tooling done; clips to label |
-| M2.2 | Kinematic signals (body frame, gap-aware derivatives, VFR repeated frames, smoothing, NumPy peaks) | not started; needs approval |
+| M2.1 | Dataset, labels, `eval_strokes.py`, input visibility report (also M1 item 11) | ✅ single-player dataset (ADR-018) |
+| M2.2 | Kinematic signals (body frame, gap-aware derivatives on `timemap.json` source times, repeated/skipped frames, smoothing, NumPy peaks) | approved 2026-11-20; starts after PR #1/#2 merge |
 | M2.3 | Candidate events + `strokes.json`, CLI on existing analyses, evaluated on the dataset | not started |
 | M2.4 | Forehand/backhand with levels and uncertainty reasons | not started |
 | M2.5 | Player selection by tap (verification first), identity jumps; `num_poses` > 1 if M2.1 data require it | not started |
@@ -113,5 +117,7 @@ M1 → M2 → M3 → M4; M3 → M5; M1 → M6 (parallel research); M4 + M3 → M
 ## Priorities
 
 Reliability of ingestion and pose > stroke detection > metrics > AI interpretation >
-comparison/progress. M2 implementation (M2.2 onwards) starts only after M2.1 data have been
-reviewed and the next step approved.
+comparison/progress. Each M2 step starts only after explicit approval (M2.2 approved
+2026-11-20; M2.3 and later not yet). Personal-first (ADR-018): results are first judged on
+the developer's own tennis; the engine stays player-independent (no body-specific constants,
+per-player hand/backhand, personal data separate from algorithm parameters).

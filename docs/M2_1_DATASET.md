@@ -1,7 +1,8 @@
 # M2.1 — Real-clip dataset, labels and input evaluation
 
-Status: **tooling implemented, dataset not yet collected** (2026-11-19). M2.1 also
-fulfils M1 item 11 (decision D1 of the M2.0 design, approved 2026-11-19).
+Status: **done for the personal prototype** (2026-11-20): tooling implemented and run on a
+first real dataset of **one player** (section 9). M2.1 also fulfils M1 item 11 (decision D1
+of the M2.0 design, approved 2026-11-19), with the single-player limit of ADR-018.
 
 M2.1 builds no stroke detector and no forehand/backhand classifier. It provides:
 
@@ -49,7 +50,14 @@ video folder with its original file name, proxy frame rate and whether a time ma
 Verified on 2026-11-19 with synthetic videos (30 fps, 60 fps, VFR 10→30 fps): proxy,
 overlay and `pose.json` have the same frame count, and overlay frame N prints `#N` with the
 same time as the test pattern's own clock (see `tests/integration/test_eval_strokes_pipeline.py`).
-Not yet verified on real phone footage.
+Verified on real iPhone footage on 2026-11-19/20 (section 9): overlay `#N`, proxy and
+`pose.json` frame N agree.
+
+In practice (2026-11-19/20) the player gave approximate impact times while watching the
+original (`seconds.frames`, e.g. `19.07` = 19 s + 7 frames) and the impact frame was then
+located on the proxy and confirmed by the player. The given times were usually 0–2 frames
+before the impact, twice 6 and 14 frames (still in the backswing): always locate the frame
+on the video.
 
 ## 3. `MANIFEST.md` (definitive format)
 
@@ -186,5 +194,59 @@ from the denominator) and abstentions/matched (an `unknown` is never counted as 
 - Frames skipped by `pose_stride > 1` count as missing in the window (the check command
   warns). Label with stride 1.
 - The overlay is optional in the pipeline (`--no-overlay`); labelling needs it.
-- Real phone footage has not been run through these tools yet (no clips were available to
-  the development environment on 2026-11-19).
+- **Single player** (ADR-018): the first dataset contains only the developer's own strokes,
+  in one indoor venue, at 30 fps. Its results describe that player and those recording
+  conditions; generalisation to other players is not shown.
+
+## 9. First real dataset (2026-11-19/20) — single player
+
+Personal-first priority (ADR-018): this dataset is enough to start the personal prototype
+(M2.2) and is **not** a general validation of the system.
+
+| Property | Value |
+| --- | --- |
+| Player | one (A), right-handed, two-handed backhand |
+| Venue / light | one indoor dome, artificial light |
+| Recording | iPhone originals, 720×1280 portrait, 30 fps (29.97–30) |
+| Sessions | 3 (two from behind, one match from the forehand side) |
+| Clips (`clip_id`) | 6: 4 `behind` (28 impacts), 2 `side_forehand` cuts of one match (7 impacts) |
+| Impacts | 35: 19 forehand, 15 backhand, 1 `other` (feed to the partner in a warm-up) |
+| Split | all `unassigned`: fewer than 5 clips per split, so no dev/test numbers |
+
+Input visibility (window ±0.3 s, counting threshold 0.5; `n/of` over these clips only):
+
+| | Forehand (19) | Backhand (15) |
+| --- | --- | --- |
+| Right (hitting) wrist score ≥ 0.5 at impact | 19/19 | 3/15 |
+| Right wrist unbroken over the window | 16/19 | 0/15 |
+| Left wrist score ≥ 0.5 at impact | 9/19 | 12/15 |
+| Left wrist unbroken over the window | 3/19 | 9/15 |
+| Shoulders and hips ≥ 0.5 at impact | 19/19 | 15/15 |
+
+Human check of the drawn right wrist (`overlay_wrist`, 30 of 35 checked): score ≥ 0.5 →
+18 on the hand, 0 elsewhere; score < 0.5 → 1 on the hand, 8 elsewhere, 3 not drawn. All 11
+wrong or missing cases are backhands.
+
+What this means for later milestones (observations on this player, not validated rules):
+
+- Two-handed backhand seen from behind: the right hand is hidden behind the body; the
+  **left** wrist is the usable reference. The player judged it "fairly precise" on the
+  overlays, but it was not checked impact by impact.
+- Side view: only the stroke the player opens towards is observable. From the forehand side
+  both arms are hidden on backhands (3/3 not drawn): arm metrics there are non-observable.
+- Shoulders and hips were usable at every impact.
+- **Timing:** three of the iPhone originals have container timestamps that alternate between
+  31.67 and 35.00 ms (±1.67 ms around 33.33 ms). Probably where the accumulated offset sits at
+  half a proxy frame, the fps filter repeats one source frame and skips the next (IMG_4893: 319
+  repeats, 318 skips, all between about 300 s and 332 s). On those proxy frames `pose.json`
+  shows the same pose twice and then a two-frame jump. The source itself has no gap; the
+  distortion comes from resampling. M2.2 must take sample times from `timemap.json`, not
+  from `frame / fps` (ADR-018). Only 1 of the 35 labelled windows contains such a repeat.
+- The report groups these clips as `cfr` (the container is CFR within tolerance) although
+  their proxies contain repeats: the `source_frame_rate` grouping does not reveal them; the
+  per-impact `repeated_proxy_frames` count does.
+
+Other problems found: the overlay frame number is small and low-contrast on bright
+backgrounds (pipeline change, not in M2.1); edited exports (DaVinci, 24 fps, pillarboxed)
+had pose in only 59–64 % of frames from the side, so originals are preferred; files over
+400 MB had to be cut before transfer (`ffmpeg -ss … -t …`).

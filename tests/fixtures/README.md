@@ -19,9 +19,10 @@ invent poses.
 
 ## Real tennis footage (not committed)
 
-Real amateur smartphone footage is required to validate Milestone 1 (see
-`docs/TESTING_STRATEGY.md`). Place clips you own or have permission to use in
-`tests/fixtures/real/` (git-ignored) and describe each one in
-`tests/fixtures/real/MANIFEST.md` (camera position, fps, resolution, lighting,
-stroke types, handedness). Do not commit footage of other people or
-copyrighted broadcast footage.
+Real amateur smartphone footage is required to validate Milestone 1 and to build the M2
+dataset (see `docs/M2_1_DATASET.md`). `tests/fixtures/real/` is git-ignored: keep there
+the hand-written `MANIFEST.md` (one table row per clip) and `labels.csv` (one row per
+impact), created with `uv run python scripts/eval_strokes.py init`. Clips are processed
+through the app; the manifest points at their output folders under `storage/`. Use only
+clips you own or have permission to use, and never commit footage, pose files or reports
+of real people, nor copyrighted broadcast footage.

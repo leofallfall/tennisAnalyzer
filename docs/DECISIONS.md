@@ -176,3 +176,65 @@ Brotli (new dependency).
 **Consequences:** redaction is a safety net based on known roots: a path outside them in a
 third-party message would not be shortened (engine errors no longer produce such paths).
 The AI hand-off command intentionally keeps the pack path the user types.
+
+### ADR-017 Stroke recognition (M2): pose-kinematics rules first, measured before built
+**Context:** M2 must find stroke events, the player involved, forehand/backhand, a time and
+an interval, with explicit uncertainty. The code had pose only (33 MediaPipe 2D landmarks
+per frame, `num_poses=1`), no kinematics and no labelled real footage. The M2.0 design
+(2026-11-19) was approved with decisions D1–D11.
+**Decision:**
+- D1: M2.1 (dataset, labels, evaluation tooling) also fulfils M1 item 11.
+- D2: the MVP works on the full-rate `pose.json` already produced; the 10 fps scan with
+  dense pose around candidates is postponed (conditional M2.7).
+- D3: no SciPy; peaks and smoothing are written in NumPy.
+- D4: the event time is the hitting-wrist speed peak; `estimated_contact_s` stays `null`
+  until the peak-to-impact offset is measured on labels.
+- D5: confidence as levels (`high`/`low`/`none`) with reason codes; numeric confidence
+  stays `null` until calibrated.
+- D6: no forehand/backhand without a declared dominant hand.
+- D7: MVP scope is groundstrokes; serve, smash and volleys are `unknown` or out of scope.
+- D8: player selection in two steps (tap as verification, then `num_poses` > 1 if data
+  require it); another pose estimator (e.g. rtmlib) only past an error threshold agreed
+  after M2.1.
+- D9: new `strokes.json` artifact; `StrokeClassifier` receives a typed context instead of
+  `dominant_hand: str` (done in M2.3/M2.4, not before).
+- D10: `TimeInterval` is documented on the proxy timeline; source times are reported too
+  when `timemap.json` exists.
+- D11: the ROADMAP target (precision/recall ≥ 0.9) is confirmed or revised after M2.1.
+**Alternatives:** racket or ball detection (generic detectors fail on motion blur; no
+labelled data); a trained model (GBDT/1D-CNN) from the start (no labelled data to train or
+evaluate); a 10 fps scan first (cheaper, but fewer samples around the wrist peak and more
+MediaPipe tracking loss, with no measurement yet).
+**Consequences:** nothing is built before the input is measured on real clips. The
+evaluation tooling (`tennis_cv.evaluation`) lives in the engine as a pure library used only
+by `scripts/eval_strokes.py`, so it is typed and tested like the rest but never runs in
+production. Labels use the proxy frame index printed on `overlay.mp4`, so no annotation tool
+and no time conversion are needed.
+
+### ADR-018 Personal-first development and validation (2026-11-20)
+**Context:** M2.1 produced a first real dataset of one player (the developer): 6 clips, 35
+impacts, one indoor venue, 30 fps. A representative dataset (other players, venues, frame
+rates, ≥ 5 dev and ≥ 5 test clips from different sessions) would take months to collect.
+**Decision:**
+- Priority: build a tool that works reliably on the developer's own tennis first. The
+  current M2.1 dataset is enough to start M2.2. More of his sessions, and friends' clips when
+  available, are added as extra checks, not as a blocker.
+- Every report states the limit: one player; visibility results reflect his body and his
+  recording conditions; generalisation to other players is not shown; no result is a
+  general validation of the system.
+- The software stays player-independent: dominant hand and backhand are per-player inputs;
+  measurements are normalised to body proportions when technically possible; detection rules
+  contain no coordinates or physical traits of a specific body; personal data stay separate
+  from algorithm parameters; new players and datasets can be added without rewriting the
+  engine. No calibration system or multi-user features are added for this.
+- Signal processing must not treat proxy frames as equally spaced: sample times come from
+  `timemap.json` (once the map is exact, see `M2_1_DATASET.md` §9), repeated proxy frames are
+  removed or marked, and a derivative over an
+  irregular or unreliable interval is reported as unreliable or non-observable rather than
+  as motion (timing artefacts are not biomechanics).
+**Alternatives:** collect 10–20 sessions including other players before M2.2 (more general
+evidence, months of delay for a personal tool); tune the engine to this player only (faster
+first results, but a rewrite for anyone else).
+**Consequences:** thresholds tuned in M2.2–M2.4 may encode this player's style and must be
+re-checked when other players' clips arrive. Accuracy figures, when they exist, are labelled
+as single-player. M1 item 11 stays partly open.

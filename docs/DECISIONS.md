@@ -271,3 +271,86 @@ backhands); finite differences of smoothed positions for speed (inconsistent at 
 absolute speed thresholds (not supported by the VIDEO/IMAGE comparison).
 **Consequences:** the remaining M2.2 interventions are proposed one by one and reviewed;
 M2.3 does not start without approval.
+
+### ADR-020 Session Analysis as entry point; single-stroke analysis on demand (2026-11-20)
+**Context:** the product's main experience starts from a whole session: recurring technical
+issues per forehand / backhand / both, personal reference executions, and access to the
+strokes behind each issue. The roadmap had single-stroke analysis (M3) before the session
+report (M4). Pose is already computed on every frame (D2), so computation is not what
+separates the two analyses. Design discussed in the developer's project (architecture
+review, revision 2), approved by the developer.
+**Decision (A1–A11):**
+- M3 and M4 swap: Session Analysis (M3) is the first product result; single-stroke deep
+  analysis (M4) follows and runs on demand.
+- Session indicators are computed on every stroke and anchored to the stroke event, not to
+  phases.
+- Initial issues are relative to the player (inconsistency, deviation from the usual range,
+  forehand/backhand differences); no unvalidated absolute biomechanical thresholds.
+- "Personal reference execution" replaces "positive execution": confirmable or discardable
+  by the user; it does not mean a successful or technically correct stroke.
+- Indicators are validated (M3.1) before any issue is generated. Availability, geometric
+  correctness, stability and view compatibility are assessed separately; having a value on
+  most strokes is not validation. The four indicators proposed (lateral impact distance,
+  impact height, shoulder-turn range, finish completeness) are candidates only.
+- Versioned chain of JSON artifacts (`strokes.json` → `stroke_features.json` →
+  `session_findings.json` → per-stroke detail), each re-runnable from the previous one
+  without re-running pose.
+- M2.5 moves before M3, limited to marking and excluding strokes that may belong to
+  another person (abstention and traceability; no identity recognition).
+- M2.3 additions: peak-to-impact offset checked on the 35 labels; the peak is a candidate
+  event, not proof of impact; observability per body region with explicit reasons; a
+  stroke's overall reliability never exceeds that of its measurements.
+- Four result levels are always kept apart: personal variation, deviation from the usual
+  range, possible technical issue, technical error backed by a validated measurement.
+- An issue concentrated in one part of a session is not excluded for that reason; its
+  distribution over the session is shown.
+- Statistical rules (minimum 8 evaluable strokes per type, frequency intervals, minimum 3
+  evidence strokes, distribution over the session, 80 % availability) are provisional
+  parameters to tune on videos, not final rules.
+**Alternatives:** keep single stroke first (deep analysis without knowing which strokes
+matter); a "light" per-stroke session pass (cannot support recurring-issue claims);
+unsupervised anomaly detection (on current data it would mostly find tracking errors).
+**Consequences:** still proposals to validate: the indicator list, the
+`session_findings.json` structure, the issue catalogue, "common" meaning each stroke type
+passes separately, extending the AI pack models, a separate file for manual corrections,
+no new database tables before M8, on-demand per-stroke detail.
+
+### ADR-021 M2.3 exit criterion (2026-11-20)
+**Context:** M2.3 must be judged on 35 labelled impacts of one player (34 forehand/backhand
+targets) without fixing accuracy targets or time tolerances before seeing results. The
+existing comparison tool matches nearest-first, ignores rejected events and does not know
+which part of each clip is labelled (3 of 6 clips only in the first minute).
+**Decision (approved by the developer):**
+- Two stages: yes/no checks and a complete, reproducible report first; numeric judgements
+  decided by the developer after seeing results and recorded as provisional values.
+- Five dimensions assessed separately: impact coverage (intercepted, intercepted-uncertain,
+  ambiguous, missed with a cause); temporal precision (signed peak-to-impact offset per
+  wrist peak, full distribution by type, view, wrist and label visibility; estimated
+  frames shown apart); false candidates (judged only inside labelled intervals, categories
+  preparation, recovery/finish, movement between strokes, tracking error, unlabelled real
+  stroke, not judgeable); regional observability (torso, left wrist, right wrist, legs,
+  each with state and reasons, independent of each other); repeatability and traceability
+  (identical output on re-run, full decision trace for every event including rejected
+  ones, effect of video-relative thresholds, tuning clips recorded, parameters frozen).
+- Wrist peaks are evidence; candidate events (possible strokes) are what is counted. Peaks
+  of both wrists within a grouping window G are chained into one event; evidence of both
+  wrists is kept; the representative wrist may stay "not determined", the event then has a
+  time window. G is chosen from data and must satisfy 2·r_max + G < minimum label gap.
+- Association by connected components of the event–label graph within radius r: one event
+  and one impact = intercepted; several events or impacts = ambiguous, reported and never
+  assigned. Radii 0.1 / 0.2 / 0.3 / 0.5 s are each computed from scratch. The minimum gap
+  between consecutive labels over the whole sample is 82 frames (2.73 s, img4893), hence
+  G < 1.73 s; the check is recomputed on every label set.
+- Blind re-annotation of two clips is optional but recommended and measures intra-annotator
+  variability, not absolute label error.
+- A confirmation video is mandatory before M3.1: new session, behind view, never used for
+  tuning, annotated end to end (serves, pauses, movements between strokes, opponent),
+  evaluated with frozen parameters.
+**Alternatives:** a fixed tolerance (0.25 s) and nearest-neighbour matching (hides
+ambiguity, threshold chosen before data); precision/recall targets now (35 impacts cannot
+support them).
+**Consequences:** before implementation, `strokes.json` (wrist peaks, events, regions,
+decision trace) and the evaluation tool (labelled intervals, connected-component matching,
+rejected events, independent radii, false-candidate review sheet) must be specified. The
+results are a development check on one player, not a validation. M2.3 starts only after
+M2.2 and an explicit go.

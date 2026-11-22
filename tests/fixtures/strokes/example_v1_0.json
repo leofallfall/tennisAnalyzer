@@ -512,6 +512,21 @@
       "kind": "uncertain"
     },
     {
+      "code": "chain_grouping",
+      "description": "Consecutive peaks at most G apart are chained into one event",
+      "kind": "check"
+    },
+    {
+      "code": "decision",
+      "description": "Final status of the event, from the steps before it",
+      "kind": "decision"
+    },
+    {
+      "code": "max_event_span",
+      "description": "Event span within grouping.max_event_span_s (else possible merge)",
+      "kind": "check"
+    },
+    {
       "code": "only_wrist_good_in_window",
       "description": "Only one wrist has good samples around its peak",
       "kind": "representative_wrist"
@@ -525,6 +540,11 @@
       "code": "peak_below_min_rel",
       "description": "Peak below the clip-relative threshold",
       "kind": "discard_peak"
+    },
+    {
+      "code": "peak_min_rel",
+      "description": "Peak at or above the clip-relative threshold peaks.min_rel",
+      "kind": "check"
     }
   ],
   "schema": "tpa.strokes",

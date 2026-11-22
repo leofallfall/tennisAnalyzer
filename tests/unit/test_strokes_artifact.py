@@ -418,3 +418,92 @@ def test_cli_validate_strokes(raw: Doc, tmp_path: Path, capsys: pytest.CaptureFi
     assert cli.main(["validate-strokes", str(path), "--no-inputs"]) == 1
     err = capsys.readouterr().err
     assert "strokes_invariant_violated" in err and "I5:" in err
+
+
+# ----------------------------------------------------------------- input file names
+
+
+BAD_NAMES = [
+    "../pose.json",  # POSIX parent
+    "/tmp/pose.json",  # POSIX absolute
+    "sub/pose.json",  # POSIX relative path
+    "..\\pose.json",  # Windows parent
+    "C:\\data\\pose.json",  # Windows absolute
+    "C:pose.json",  # Windows drive-relative
+    "sub\\pose.json",  # Windows relative path
+    "\\\\server\\share\\pose.json",  # Windows UNC
+    "pose.json:stream",  # NTFS alternate data stream
+    ".",
+    "..",
+    "",
+    " pose.json",
+    "pose\x00.json",
+]
+
+
+def _no_filesystem(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("filesystem accessed")
+
+    for name in ("is_file", "exists", "open", "read_bytes", "resolve"):
+        monkeypatch.setattr(Path, name, boom)
+
+
+@pytest.mark.parametrize("field", ["pose", "timemap"])
+@pytest.mark.parametrize("name", BAD_NAMES)
+def test_input_names_must_be_plain_file_names(
+    raw: Doc, field: str, name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw["inputs"][field]["file"] = name
+    text = _text(raw)
+    _no_filesystem(monkeypatch)
+    with pytest.raises(StrokesFormatError) as exc:
+        parse_strokes(text)
+    assert f"inputs.{field}.file" in " ".join(exc.value.details["problems"])  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("name", ["pose.json", "timemap.json", "pose_v2.json", "pose-1.v2.json"])
+def test_ordinary_file_names_are_accepted(raw: Doc, name: str) -> None:
+    raw["inputs"]["pose"]["file"] = name
+    raw["inputs"]["timemap"]["file"] = name
+    assert parse_strokes(_text(raw)).inputs.pose.file == name
+
+
+@pytest.mark.parametrize("field", ["pose", "timemap"])
+def test_check_inputs_refuses_unvalidated_path_before_filesystem(
+    raw: Doc, field: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    doc = StrokesFile.model_validate(raw)
+    getattr(doc.inputs, field).file = "../outside.json"  # bypasses validation on purpose
+    _no_filesystem(monkeypatch)
+    with pytest.raises(StrokesFormatError):
+        check_inputs(doc, tmp_path)
+
+
+# ----------------------------------------------------------------- trace rules in the catalogue
+
+
+def test_example_catalogue_declares_every_trace_rule(raw: Doc) -> None:
+    codes = {r["code"] for r in raw["rules"]}
+    used = {s["rule"] for e in raw["events"] for s in e["trace"]}
+    assert "decision" in codes and used <= codes
+
+
+def test_trace_rule_not_in_catalogue_is_rejected(raw: Doc) -> None:
+    _event(raw, "e0001")["trace"][2]["rule"] = "made_up_check"
+    found = _violations(raw)
+    assert any(p.startswith("I5:") and "made_up_check" in p for p in found), found
+    with pytest.raises(StrokesInvariantError):
+        parse_strokes(_text(raw))
+
+
+@pytest.mark.parametrize("code", ["chain_grouping", "decision"])
+def test_catalogue_missing_a_used_rule_is_rejected(raw: Doc, code: str) -> None:
+    raw["rules"] = [r for r in raw["rules"] if r["code"] != code]
+    found = [p for p in _violations(raw) if p.startswith("I5:")]
+    assert found and all(code in p for p in found), found
+
+
+def test_duplicate_rule_code_is_still_rejected(raw: Doc) -> None:
+    raw["rules"].append(dict(raw["rules"][0]))
+    assert any("duplicate rule code" in p for p in _violations(raw))

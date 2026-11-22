@@ -416,8 +416,8 @@
       "additionalProperties": false,
       "properties": {
         "file": {
-          "description": "Base name, never a path",
-          "minLength": 1,
+          "description": "Plain file name next to strokes.json, never a path",
+          "pattern": "^[^/\\\\:\\x00]+$",
           "title": "File",
           "type": "string"
         },
@@ -724,6 +724,8 @@
         "reject",
         "uncertain",
         "representative_wrist",
+        "check",
+        "decision",
         "info"
       ],
       "title": "RuleKind",
@@ -828,7 +830,7 @@
         "file": {
           "anyOf": [
             {
-              "minLength": 1,
+              "pattern": "^[^/\\\\:\\x00]+$",
               "type": "string"
             },
             {
@@ -836,6 +838,7 @@
             }
           ],
           "default": null,
+          "description": "Plain file name, never a path",
           "title": "File"
         },
         "sha256": {

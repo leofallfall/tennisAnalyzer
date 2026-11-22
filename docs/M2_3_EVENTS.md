@@ -31,12 +31,12 @@ by the evaluation tool in a separate `strokes_eval.json` (ADR-022, PR 2), so the
 | `schema`, `schema_version` | `"tpa.strokes"`, `"1.0"` |
 | `created_at` | the only field ignored by repeatability checks |
 | `producer` | algorithm name and version, `status: experimental`, engine version |
-| `inputs.pose` | base name, sha256 of the bytes, fps, frame count, `frame_stride` |
-| `inputs.timemap` | base name and sha256 (both null when `missing`), `status` as `build_timebase` reports it |
+| `inputs.pose` | plain file name (no `/`, `\`, `:`, NUL, `.` or `..`: never a path, checked before any file access), sha256 of the bytes, fps, frame count, `frame_stride` |
+| `inputs.timemap` | plain file name (same rule) and sha256 (both null when `missing`), `status` as `build_timebase` reports it |
 | `inputs.player_config` | reserved for the player configuration of M2.2 #6; null and unused in 1.0 |
 | `time_basis` | `source` (consistent map) or `proxy`, same values as `signals.timebase` |
 | `params`, `params_sha256` | every parameter used, M2.2 signal parameters included as written; sha256 of the compact key-sorted JSON |
-| `rules` | catalogue of every rule / reason code used in the file (`code`, `kind`, `description`) |
+| `rules` | catalogue of every rule and reason code used in the file, trace rules and `decision` included (`code`, `kind`, `description`; kinds `discard_peak`, `reject`, `uncertain`, `representative_wrist`, `check`, `decision`, `info`) |
 
 Rule codes of the detector are defined by M2.3. The schema only requires that each code is
 declared in `rules`, so every decision can be read from the file alone.
@@ -78,8 +78,9 @@ writer refuses to write such a document.
    peaks within G can never sit in different events).
 4. A determined representative wrist has its reference time on one of its peaks in the
    event; an undetermined one has a null reference and at least one reason.
-5. Rejected and uncertain events have at least one reason; every event, peak and
-   representative-wrist reason is declared in `rules`.
+5. Rejected and uncertain events have at least one reason; every code used in the file
+   is declared exactly once in `rules`: event, peak and representative-wrist reasons and
+   every `trace[].rule`, `decision` included.
 6. `reliability.state` is not above the worst state among `regions_used`; `limited_by` ⊆
    `regions_used`; a `not_observable` region has a reason. A region outside
    `regions_used` takes no part in any check.

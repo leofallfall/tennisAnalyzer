@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -173,6 +174,8 @@ class RuleKind(StrEnum):
     REJECT = "reject"
     UNCERTAIN = "uncertain"
     REPRESENTATIVE_WRIST = "representative_wrist"
+    CHECK = "check"
+    DECISION = "decision"
     INFO = "info"
 
 
@@ -187,6 +190,29 @@ class TraceOutcome(StrEnum):
 
 DECISION_RULE = "decision"
 """Rule name of the last trace step of every event (invariant 8)."""
+
+
+_FILE_NAME = r"^[^/\\:\x00]+$"
+"""Plain file name for the JSON Schema: no separator (``/`` or ``\\``), no drive or stream
+colon, no NUL. ``.`` and ``..`` are refused by :func:`_plain_file_name`."""
+
+
+def _plain_file_name(name: str) -> str:
+    """Accept only a plain file name, never a path: ``pose.json`` yes; ``../pose.json``,
+    ``/abs``, ``C:\\x``, ``C:x``, ``a\\b``, ``.`` and ``..`` no. Checked at validation time,
+    so a bad name never reaches the filesystem."""
+    if (
+        not name
+        or name in (".", "..")
+        or any(c in name for c in "/\\:\x00")
+        or name != name.strip()
+    ):
+        raise ValueError(f"must be a plain file name, not a path: {name!r}")
+    return name
+
+
+FileName = Annotated[str, AfterValidator(_plain_file_name), Field(pattern=_FILE_NAME)]
+"""Base name of an input file next to ``strokes.json`` (never a path)."""
 
 
 def _round(x: float) -> float:
@@ -214,7 +240,7 @@ class Producer(_Model):
 
 
 class PoseInput(_Model):
-    file: str = Field(min_length=1, description="Base name, never a path")
+    file: FileName = Field(description="Plain file name next to strokes.json, never a path")
     sha256: str = Field(pattern=_SHA256, description="SHA-256 of the file bytes")
     fps: float = Field(gt=0)
     frames: int = Field(ge=0, description="Entries in pose.json frames")
@@ -222,7 +248,7 @@ class PoseInput(_Model):
 
 
 class TimemapInput(_Model):
-    file: str | None = Field(default=None, min_length=1)
+    file: FileName | None = Field(default=None, description="Plain file name, never a path")
     sha256: str | None = Field(default=None, pattern=_SHA256)
     status: MapStatus = Field(description="As reported by signals.timebase.build_timebase")
 
@@ -598,9 +624,15 @@ def _inv4_representative(doc: StrokesFile) -> list[str]:
 
 
 def _inv5_reasons(doc: StrokesFile) -> list[str]:
-    """Rejected / uncertain events have a reason; every reason code is in ``rules``."""
+    """Rejected / uncertain events have a reason; every code used in the file (event, peak
+    and representative-wrist reasons, every trace rule, ``decision`` included) is declared
+    once in ``rules``."""
     out = [f"duplicate rule code {d!r}" for d in _dupes(r.code for r in doc.rules)]
     known = {r.code for r in doc.rules}
+    for e in doc.events:
+        for s in e.trace:
+            if s.rule not in known:
+                out.append(f"event {e.id!r}: trace step {s.step} rule {s.rule!r} is not in rules")
     for e in doc.events:
         if e.status is not EventStatus.ACCEPTED and not e.reasons:
             out.append(f"event {e.id!r} is {e.status.value} without a reason")
@@ -806,6 +838,13 @@ def check_inputs(doc: StrokesFile, directory: str | Path) -> list[str]:
     """Compare the recorded input hashes with the files in ``directory`` ([] = current)."""
     d = Path(directory)
     out: list[str] = []
+    # names are validated by the model; re-check here for documents built without it
+    for name in (doc.inputs.pose.file, doc.inputs.timemap.file):
+        if name is not None:
+            try:
+                _plain_file_name(name)
+            except ValueError as exc:
+                raise StrokesFormatError(str(exc), details={"field": "inputs"}) from exc
     pose = d / doc.inputs.pose.file
     if not pose.is_file():
         out.append(f"{doc.inputs.pose.file}: not found next to strokes.json")

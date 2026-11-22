@@ -18,9 +18,9 @@ ADR-017). **M2.1 dataset and labels: done for the personal prototype** (2026-11-
 **Personal-first priority** (ADR-018): the prototype is developed and checked on the
 developer's own tennis first; validation on other players comes later and is not claimed.
 **M2.2 (signal processing only) approved** on 2026-11-20 and **in progress** after the
-PR #1/#2 merges (`docs/M2_2_SIGNALS.md`): interventions 1–4 merged (time base, smoothing,
-two quality levels, torso scale); 5 (apparent 2D speed) under review; 6 (complementary
-signals) follows ADR-019. Each intervention is reviewed before the next.
+PR #1/#2 merges (`docs/M2_2_SIGNALS.md`): interventions 1–5 merged (time base, smoothing,
+two quality levels, torso scale, apparent 2D speed); 6 (body signals, player
+configuration) under review. Each intervention is reviewed before the next.
 
 **Product direction: Session Analysis first** (approved 2026-11-20, ADR-020): the session
 report becomes M3 and single-stroke deep analysis M4; session indicators are computed on
@@ -75,7 +75,7 @@ be confirmed or revised after the M2.1 data** (D11).
 | Step | Goal | Status |
 | --- | --- | --- |
 | M2.1 | Dataset, labels, `eval_strokes.py`, input visibility report (also M1 item 11) | ✅ single-player dataset (ADR-018) |
-| M2.2 | Kinematic signals (time base, smoothing, two-level visibility, torso scale, apparent 2D speed, shoulder/hip lines, hand distance, wrist vs torso; ADR-019) | in progress: #1–#4 done (time base, smoothing, quality levels, torso scale); #5 apparent 2D speed under review; #6 per ADR-019 |
+| M2.2 | Kinematic signals (time base, smoothing, two-level visibility, torso scale, apparent 2D speed, shoulder/hip lines, hand distance, wrist vs torso; ADR-019) | in progress: #1–#5 done (time base, smoothing, quality levels, torso scale, apparent 2D speed); #6 body signals + `PlayerConfig` under review |
 | M2.3 | Candidate events (relative speed peaks on both wrists grouped into one event per gesture, complementary signals, confidence, abstention; NumPy peaks) + `strokes.json` with per-region observability and a decision trace; peak-to-impact offset measured on the 35 labels (the peak stays a candidate event) | exit criterion approved (ADR-021); not started (after M2.2) |
 | M2.4 | Forehand/backhand with levels and uncertainty reasons | not started |
 | M2.5 | Player verification, **moved before M3** (ADR-020): mark strokes that may belong to another person and exclude them from statistics when not reliable, with traceable reasons; no identity recognition for now. Later: selection by tap, `num_poses` > 1 if data require it | not started |

@@ -271,6 +271,14 @@ backhands); finite differences of smoothed positions for speed (inconsistent at 
 absolute speed thresholds (not supported by the VIDEO/IMAGE comparison).
 **Consequences:** the remaining M2.2 interventions are proposed one by one and reviewed;
 M2.3 does not start without approval.
+**Addendum, intervention 6 (2026-11-22, under review):** wrist position relative to the
+mid-hip point in image axes (lateral and vertical separate); line angles as the direction
+left → right in (−180°, 180°], y up, not unwrapped; GOOD-only = no LOW sample in the fit of
+either wrist; states combined over the keypoints used, scale state apart; `PlayerConfig`
+reuses the manifest enums and only names roles. Alternatives: axes attached to the trunk
+(change with every bend), mid-shoulder origin (moves with shoulder tilt during the swing),
+undirected line angle modulo 180° (no wrap, but loses which side is where), GOOD-only from
+raw instead of smoothed positions (noisier, different from every other signal).
 
 ### ADR-020 Session Analysis as entry point; single-stroke analysis on demand (2026-11-20)
 **Context:** the product's main experience starts from a whole session: recurring technical

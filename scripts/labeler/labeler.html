@@ -880,13 +880,14 @@
         const f = e.target.files[0]
         if (!f) return
         video.src = URL.createObjectURL(f)
-        if (!clipId()) {
-          $('clip').value = f.name.replace(/\.[^.]+$/, '')
-          state.clip = clipId()
-          save()
-        }
-        flash = ''
+        // Never guess the clip_id from the file name (overlay.mp4 / proxy.mp4 say nothing),
+        // and never keep the previous one silently: ask to confirm it for this video.
+        flash = clipId()
+          ? `Video caricato: ${f.name}. Il clip_id è ancora "${clipId()}": è quello giusto per questo video? Se no, cambialo prima di etichettare.`
+          : `Video caricato: ${f.name}. Scrivi il clip_id del MANIFEST prima di etichettare.`
         render()
+        $('clip').focus()
+        $('clip').select()
       })
       video.addEventListener('loadedmetadata', () => seekFrame(0))
       video.addEventListener('seeked', renderFrame)

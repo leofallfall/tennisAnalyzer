@@ -16,6 +16,8 @@ Usage:
     uv run python scripts/eval_strokes.py evaluate MANIFEST LABELS --out STROKES_EVAL.json
         [--annotated ANNOTATED.csv] [--results-dir DIR] [--radii 0.1,0.2,0.3,0.5]
         [--targets forehand,backhand] [--outside-search-s 2.0] [--no-input-hashes]
+    uv run python scripts/eval_strokes.py report STROKES_EVAL.json MANIFEST --out REPORT.md
+        [--results-dir DIR] [--json DATA.json] [--review-csv SHEET.csv] [--review-in FILLED.csv]
 
 ``validate-strokes`` checks a strokes.json 1.x file: version, schema, the eight invariants
 and (unless --no-inputs) the sha256 of pose.json / timemap.json in DIR (default: the
@@ -25,6 +27,11 @@ folder of STROKES). See docs/M2_3_EVENTS.md.
 format) with the labels, one radius at a time, and writes strokes_eval.json: every edge,
 connected components, intercepted / missed / ambiguous impacts with miss causes, and every
 unassociated event with its position and verdict. See docs/M2_3_EVALUATION.md.
+
+``report`` turns strokes_eval.json into tables (by stroke type, view, label quality,
+overlay_wrist, event wrist, clip), per-wrist offset distributions, event statistics and the
+false-candidate review sheet; ``--review-in`` merges a filled sheet back. It recomputes
+nothing and refuses strokes files changed since the evaluation.
 
 DIR defaults to tests/fixtures/real (git-ignored: real footage is never committed).
 """
@@ -57,11 +64,20 @@ from tennis_cv.evaluation.dataset import (
     load_labels,
     load_manifest,
 )
-from tennis_cv.evaluation.eval_artifact import dump_eval
+from tennis_cv.evaluation.eval_artifact import StrokesEvalFile, dump_eval
+from tennis_cv.evaluation.eval_report import (
+    build_report,
+    load_review,
+    render_report,
+    render_review_csv,
+)
 from tennis_cv.evaluation.evaluate import (
     DEFAULT_OUTSIDE_SEARCH_S,
     DEFAULT_RADII_S,
+    STROKES_FILE,
+    LoadedStrokes,
     evaluate_dataset,
+    load_events,
     summary_lines,
 )
 from tennis_cv.evaluation.matching import (
@@ -429,6 +445,45 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    doc = StrokesEvalFile.model_validate_json(args.strokes_eval.read_bytes())
+    clips = {c.clip_id: c for c in load_manifest(args.manifest)}
+    strokes: dict[str, LoadedStrokes] = {}
+    for ce in doc.clips:
+        clip = clips.get(ce.clip_id)
+        if clip is None:
+            print(f"WARNING clip {ce.clip_id} not in the manifest", file=sys.stderr)
+            continue
+        path = (
+            args.results_dir / f"{ce.clip_id}.strokes.json"
+            if args.results_dir
+            else clip.pose_dir / STROKES_FILE
+        )
+        if path.is_file():
+            strokes[ce.clip_id] = load_events(path)
+        else:
+            print(
+                f"WARNING clip {ce.clip_id}: {path.name} not found, event details unknown",
+                file=sys.stderr,
+            )
+    review = load_review(args.review_in) if args.review_in else None
+    rep = build_report(doc, clips, strokes, review)
+    for s in rep.stale_review_rows:
+        print(
+            f"WARNING review line {s.line} ({s.clip_id} {s.event_id}): {s.reason}", file=sys.stderr
+        )
+    args.out.write_text(render_report(rep, source=args.strokes_eval.name), encoding="utf-8")
+    print(f"report written: {args.out}")
+    if args.json:
+        args.json.write_text(rep.model_dump_json(indent=2), encoding="utf-8")
+        print(f"data written: {args.json}")
+    if args.review_csv:
+        args.review_csv.write_text(render_review_csv(rep.false_candidates), encoding="utf-8")
+        rows = sum(fc.in_review_sheet for fc in rep.false_candidates)
+        print(f"review sheet written: {args.review_csv} ({rows} rows)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
@@ -503,6 +558,16 @@ def main(argv: list[str] | None = None) -> int:
         "--no-input-hashes", action="store_true", help="skip the pose/timemap sha256 check"
     )
     s.set_defaults(func=cmd_evaluate)
+
+    s = sub.add_parser("report", help="tables and review sheet from strokes_eval.json")
+    s.add_argument("strokes_eval", type=Path)
+    s.add_argument("manifest", type=Path)
+    s.add_argument("--out", type=Path, required=True, help="Markdown report to write")
+    s.add_argument("--results-dir", type=Path, default=None)
+    s.add_argument("--json", type=Path, default=None, help="report data as JSON")
+    s.add_argument("--review-csv", type=Path, default=None, help="false-candidate sheet")
+    s.add_argument("--review-in", type=Path, default=None, help="filled sheet to merge back")
+    s.set_defaults(func=cmd_report)
 
     args = p.parse_args(argv)
     try:

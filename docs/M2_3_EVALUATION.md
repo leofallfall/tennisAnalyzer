@@ -3,9 +3,8 @@
 Status (2026-11-22): **association, miss causes, verdicts of unassociated events, time
 rules and `strokes_eval.json` 1.0 done (PR 2 of the M2.3 preparation)**. No detector exists
 yet: the command is tested on synthetic files only and on real data it has only been run
-to check that it works (no number from it is a result). Reports by type / view / label
-quality, the per-wrist offset distribution (nearest-rank, P7) and the false-candidate
-review sheet are PR 3, not started.
+to check that it works (no number from it is a result). Reports and the review sheet:
+PR 3, section 8.
 
 Code: `engine/tennis_cv/evaluation/` — `association.py` (graph, pure), `clip_time.py`
 (time of a frame, frame states, windows), `evaluate.py` (rules, dataset), `eval_artifact.py`
@@ -129,3 +128,40 @@ fewer than two labels: `not_applicable` (`fewer_than_two_labels`).
   labels, annotated, each strokes file).
 - **Real data.** Run once on `img5098_full` with an empty minimal file only to check that
   the command reads the real inputs and writes a valid file.
+
+## 8. Reports and review sheet (PR 3)
+
+```bash
+uv run python scripts/eval_strokes.py report strokes_eval.json MANIFEST --out REPORT.md \
+    [--results-dir DIR] [--json DATA.json] [--review-csv SHEET.csv] [--review-in FILLED.csv]
+```
+
+Code: `engine/tennis_cv/evaluation/eval_report.py`. The report describes
+`strokes_eval.json`: it recomputes no outcome, cause or verdict. Strokes files are read
+again only for event details (wrists with peaks, regions, `possible_merge`) and must have
+the sha256 recorded in the evaluation (`strokes_eval_stale` otherwise); a missing file
+makes those details `unknown`, never guessed. Built and tested on synthetic files only:
+no detector exists yet, so no report is a validation.
+
+- **Groups, per radius:** all, stroke type, view, label quality (`full` / `partial` =
+  estimated frame / `none`), `overlay_wrist` (`not_checked` when empty), representative
+  wrist of the associated event, clip. Every count is `n/total`; miss causes are over
+  the missed impacts; fewer than 3 clips = small sample. Clips with a compatible radius
+  are counted too.
+- **Offsets:** 1-1 groups only, per wrist and for the event instant, in ms and in proxy
+  frames (never converted), signed and absolute sorted separately, nearest rank (P7: n,
+  min, Q1, median, Q3, P90, max; `None` with n = 0). Labels with an estimated frame are
+  listed and excluded from the statistics; window-only events are listed apart.
+- **Events:** graph events with one or two wrists, undetermined wrist, `possible_merge`,
+  rejected events within r of a target impact, right-wrist region of the associated event
+  vs `overlay_wrist`.
+- **False candidates:** every event unassociated at one or more radii, with the radii,
+  nearest target (signed ms), wrists with peaks, region states, verdict and automatic
+  cause per radius. The review sheet (`--review-csv`) holds those inside an annotated
+  interval at some radius (judged or `not_judgeable_coverage`), with an empty `category`
+  to fill with `preparation`, `recovery_finish`, `between_strokes`, `tracking_error`,
+  `unlabelled_stroke` or `not_judgeable`. `--review-in` merges a filled sheet by
+  `clip_id`, `event_id` and strokes sha256: another category is an error with its line; a
+  row whose sha256 changed (or whose event is gone) is listed as not reused.
+- **Choice to review:** the plan said `evaluate --review FILE`; the report is a separate
+  `report` command so that `evaluate` and `strokes_eval.json` stay unchanged.

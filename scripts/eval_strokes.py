@@ -13,10 +13,18 @@ Usage:
         [--results-dir DIR] [--tolerance-s 0.25] [--targets forehand,backhand]
         [--out REPORT.md] [--json DATA.json]
     uv run python scripts/eval_strokes.py validate-strokes STROKES [--inputs DIR | --no-inputs]
+    uv run python scripts/eval_strokes.py evaluate MANIFEST LABELS --out STROKES_EVAL.json
+        [--annotated ANNOTATED.csv] [--results-dir DIR] [--radii 0.1,0.2,0.3,0.5]
+        [--targets forehand,backhand] [--outside-search-s 2.0] [--no-input-hashes]
 
 ``validate-strokes`` checks a strokes.json 1.x file: version, schema, the eight invariants
 and (unless --no-inputs) the sha256 of pose.json / timemap.json in DIR (default: the
 folder of STROKES). See docs/M2_3_EVENTS.md.
+
+``evaluate`` associates the events of each clip's strokes file (1.x, or the M2.1 minimal
+format) with the labels, one radius at a time, and writes strokes_eval.json: every edge,
+connected components, intercepted / missed / ambiguous impacts with miss causes, and every
+unassociated event with its position and verdict. See docs/M2_3_EVALUATION.md.
 
 DIR defaults to tests/fixtures/real (git-ignored: real footage is never committed).
 """
@@ -25,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -47,6 +56,13 @@ from tennis_cv.evaluation.dataset import (
     load_clip_data,
     load_labels,
     load_manifest,
+)
+from tennis_cv.evaluation.eval_artifact import dump_eval
+from tennis_cv.evaluation.evaluate import (
+    DEFAULT_OUTSIDE_SEARCH_S,
+    DEFAULT_RADII_S,
+    evaluate_dataset,
+    summary_lines,
 )
 from tennis_cv.evaluation.matching import (
     DEFAULT_TARGETS,
@@ -350,6 +366,69 @@ def cmd_validate_strokes(args: argparse.Namespace) -> int:
     return 0
 
 
+def _radii_arg(text: str) -> list[float]:
+    """``--radii``: comma-separated finite numbers > 0; no empty item, no empty list."""
+    items = text.split(",")
+    if not text.strip():
+        raise argparse.ArgumentTypeError("empty: give radii in seconds, e.g. 0.1,0.2,0.3,0.5")
+    out: list[float] = []
+    for n, item in enumerate(items, start=1):
+        if not item.strip():
+            raise argparse.ArgumentTypeError(f"{text!r}: item {n} is empty")
+        try:
+            value = float(item)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"{text!r}: {item.strip()!r} is not a number"
+            ) from None
+        if not (math.isfinite(value) and value > 0):
+            raise argparse.ArgumentTypeError(
+                f"{text!r}: {item.strip()!r} must be a finite number > 0"
+            )
+        out.append(value)
+    return out
+
+
+def _search_arg(text: str) -> float:
+    """``--outside-search-s``: one finite number > 0."""
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number") from None
+    if not (math.isfinite(value) and value > 0):
+        raise argparse.ArgumentTypeError(f"{text!r} must be a finite number > 0")
+    return value
+
+
+def cmd_evaluate(args: argparse.Namespace) -> int:
+    annotated = args.annotated
+    if annotated is None and (args.labels.parent / ANNOTATED_FILE).is_file():
+        annotated = args.labels.parent / ANNOTATED_FILE
+    doc = evaluate_dataset(
+        args.manifest,
+        args.labels,
+        annotated,
+        results_dir=args.results_dir,
+        radii=args.radii,
+        targets=frozenset(LabelStrokeType(t) for t in args.targets.split(",") if t),
+        outside_search_s=args.outside_search_s,
+        check_input_hashes=not args.no_input_hashes,
+    )
+    for w in doc.warnings:
+        print(f"WARNING {w}", file=sys.stderr)
+    for c in doc.clips:
+        for w in c.warnings:
+            print(f"WARNING {w}", file=sys.stderr)
+    for line in summary_lines(doc):
+        print(line)
+    args.out.write_text(dump_eval(doc), encoding="utf-8")
+    print(f"evaluation written: {args.out}")
+    if not doc.clips:
+        print("No clip had a strokes file: nothing evaluated.", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
@@ -395,6 +474,35 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--inputs", type=Path, default=None, help="folder with pose.json/timemap.json")
     g.add_argument("--no-inputs", action="store_true", help="skip the input hash check")
     s.set_defaults(func=cmd_validate_strokes)
+
+    s = sub.add_parser("evaluate", help="associate strokes.json events with labels")
+    s.add_argument("manifest", type=Path)
+    s.add_argument("labels", type=Path)
+    s.add_argument("--out", type=Path, required=True, help="strokes_eval.json to write")
+    s.add_argument(
+        "--annotated",
+        type=Path,
+        default=None,
+        help=f"annotated intervals (default: {ANNOTATED_FILE} next to LABELS, if any)",
+    )
+    s.add_argument("--results-dir", type=Path, default=None)
+    s.add_argument(
+        "--radii",
+        type=_radii_arg,
+        default=list(DEFAULT_RADII_S),
+        help="comma-separated radii in seconds, each finite and > 0",
+    )
+    s.add_argument("--targets", default=",".join(sorted(t.value for t in DEFAULT_TARGETS)))
+    s.add_argument(
+        "--outside-search-s",
+        type=_search_arg,
+        default=DEFAULT_OUTSIDE_SEARCH_S,
+        help="search limit of event_outside_radius in seconds, finite and > 0",
+    )
+    s.add_argument(
+        "--no-input-hashes", action="store_true", help="skip the pose/timemap sha256 check"
+    )
+    s.set_defaults(func=cmd_evaluate)
 
     args = p.parse_args(argv)
     try:

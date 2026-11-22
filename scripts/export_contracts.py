@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from tennis_api.ai.pack import Manifest
 from tennis_api.ai.result import AnalysisResult
 from tennis_cv.biomechanics import Interpretation, Measurement, Observation, Recommendation
+from tennis_cv.evaluation.eval_artifact import StrokesEvalFile
 from tennis_cv.pipeline import ProcessingReport
 from tennis_cv.pose.models import PoseSequence
 from tennis_cv.strokes.artifact import StrokesFile
@@ -30,6 +31,7 @@ CONTRACTS: dict[str, type[BaseModel]] = {
     "pose_sequence": PoseSequence,
     "time_map": TimeMap,
     "strokes_v1": StrokesFile,
+    "strokes_eval_v1": StrokesEvalFile,
     "measurement": Measurement,
     "observation": Observation,
     "interpretation": Interpretation,

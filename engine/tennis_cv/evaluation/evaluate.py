@@ -32,6 +32,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -129,6 +130,35 @@ DEFAULT_OUTSIDE_SEARCH_S = 2.0
 TIME_TOLERANCE_S = 0.5e-4 + 1e-9
 """Seconds written in strokes.json are rounded to 4 decimals: half a unit, plus float noise."""
 STROKES_FILE = "strokes.json"
+
+
+def _is_positive_finite(x: object) -> bool:
+    """A real number (not bool), finite and strictly greater than zero."""
+    return isinstance(x, int | float) and not isinstance(x, bool) and math.isfinite(x) and x > 0
+
+
+def check_radii(radii: Iterable[float]) -> list[float]:
+    """Radii as used by the evaluation: sorted, without duplicates. Every value must be a
+    finite number > 0 (NaN, +inf, -inf, 0 and negatives are rejected) and the list must not
+    be empty. Called before any computation by every public entry point."""
+    values = list(radii)
+    if not values:
+        raise ValueError("radii: the list is empty, give at least one radius > 0")
+    bad = [r for r in values if not _is_positive_finite(r)]
+    if bad:
+        raise ValueError(
+            f"radii: every radius must be a finite number > 0 (got {', '.join(map(repr, bad))})"
+        )
+    return sorted(set(float(r) for r in values))
+
+
+def check_outside_search(value: float) -> float:
+    """Search limit of ``event_outside_radius``: a finite number > 0. Zero is rejected, as
+    before: the limit bounds a search for an event *beyond* the radius, so 0 would make the
+    cause unreachable without saying so."""
+    if not _is_positive_finite(value):
+        raise ValueError(f"outside_search_s: must be a finite number > 0 (got {value!r})")
+    return float(value)
 
 
 class StrokesParamsError(TennisCVError):
@@ -709,9 +739,8 @@ def evaluate_clip(
     cid = clip.clip.clip_id
     labels = [lb for lb in labels if lb.clip_id == cid]
     intervals = [iv for iv in intervals if iv.clip_id == cid]
-    radii_sorted = sorted(set(radii))
-    if not radii_sorted or any(not r > 0 for r in radii_sorted):
-        raise ValueError("radii must be > 0")
+    radii_sorted = check_radii(radii)
+    outside_search_s = check_outside_search(outside_search_s)
     tbp, smp, source = _params_from(loaded.doc)
     ct = ClipTime(cid, clip.poses, clip.timemap, tbp, smp)
     out_of_domain = [
@@ -855,13 +884,10 @@ def evaluate_dataset(
     now: datetime | None = None,
 ) -> StrokesEvalFile:
     """Evaluate every manifest clip that has a strokes file; list the others."""
-    radii_list = sorted(set(radii))
-    if not radii_list or any(not r > 0 for r in radii_list):
-        raise ValueError("radii must be > 0")
+    radii_list = check_radii(radii)
+    outside_search_s = check_outside_search(outside_search_s)
     if not targets:
         raise ValueError("targets must not be empty")
-    if not outside_search_s > 0:
-        raise ValueError("outside search limit must be > 0")
     clips = load_manifest(manifest)
     labels = load_labels(labels_path)
     data = [load_clip_data(c) for c in clips]

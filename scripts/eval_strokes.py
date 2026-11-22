@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -365,11 +366,38 @@ def cmd_validate_strokes(args: argparse.Namespace) -> int:
     return 0
 
 
-def _floats(text: str) -> list[float]:
+def _radii_arg(text: str) -> list[float]:
+    """``--radii``: comma-separated finite numbers > 0; no empty item, no empty list."""
+    items = text.split(",")
+    if not text.strip():
+        raise argparse.ArgumentTypeError("empty: give radii in seconds, e.g. 0.1,0.2,0.3,0.5")
+    out: list[float] = []
+    for n, item in enumerate(items, start=1):
+        if not item.strip():
+            raise argparse.ArgumentTypeError(f"{text!r}: item {n} is empty")
+        try:
+            value = float(item)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"{text!r}: {item.strip()!r} is not a number"
+            ) from None
+        if not (math.isfinite(value) and value > 0):
+            raise argparse.ArgumentTypeError(
+                f"{text!r}: {item.strip()!r} must be a finite number > 0"
+            )
+        out.append(value)
+    return out
+
+
+def _search_arg(text: str) -> float:
+    """``--outside-search-s``: one finite number > 0."""
     try:
-        return [float(x) for x in text.split(",") if x.strip()]
-    except ValueError as exc:
-        raise ValueError(f"--radii: {text!r} is not a comma-separated list of numbers") from exc
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number") from None
+    if not (math.isfinite(value) and value > 0):
+        raise argparse.ArgumentTypeError(f"{text!r} must be a finite number > 0")
+    return value
 
 
 def cmd_evaluate(args: argparse.Namespace) -> int:
@@ -381,7 +409,7 @@ def cmd_evaluate(args: argparse.Namespace) -> int:
         args.labels,
         annotated,
         results_dir=args.results_dir,
-        radii=_floats(args.radii),
+        radii=args.radii,
         targets=frozenset(LabelStrokeType(t) for t in args.targets.split(",") if t),
         outside_search_s=args.outside_search_s,
         check_input_hashes=not args.no_input_hashes,
@@ -458,9 +486,19 @@ def main(argv: list[str] | None = None) -> int:
         help=f"annotated intervals (default: {ANNOTATED_FILE} next to LABELS, if any)",
     )
     s.add_argument("--results-dir", type=Path, default=None)
-    s.add_argument("--radii", default=",".join(f"{r:g}" for r in DEFAULT_RADII_S))
+    s.add_argument(
+        "--radii",
+        type=_radii_arg,
+        default=list(DEFAULT_RADII_S),
+        help="comma-separated radii in seconds, each finite and > 0",
+    )
     s.add_argument("--targets", default=",".join(sorted(t.value for t in DEFAULT_TARGETS)))
-    s.add_argument("--outside-search-s", type=float, default=DEFAULT_OUTSIDE_SEARCH_S)
+    s.add_argument(
+        "--outside-search-s",
+        type=_search_arg,
+        default=DEFAULT_OUTSIDE_SEARCH_S,
+        help="search limit of event_outside_radius in seconds, finite and > 0",
+    )
     s.add_argument(
         "--no-input-hashes", action="store_true", help="skip the pose/timemap sha256 check"
     )

@@ -42,6 +42,8 @@ from tennis_cv.evaluation.eval_artifact import (
 )
 from tennis_cv.evaluation.evaluate import (
     LoadedStrokes,
+    check_outside_search,
+    check_radii,
     evaluate_clip,
     evaluate_dataset,
     load_events,
@@ -813,3 +815,123 @@ def test_cli_evaluate(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> Non
     doc = StrokesEvalFile.model_validate_json(out.read_text())
     assert doc.params.radii_s == [0.1, 0.3]
     assert doc.inputs.annotated is not None
+
+
+# ---------------------------------------------------------------- numeric input validation
+
+NON_FINITE = [float("nan"), float("inf"), float("-inf")]
+
+
+def test_check_radii_accepts_valid_values() -> None:
+    assert check_radii([0.5, 0.1, 0.2, 0.1]) == [0.1, 0.2, 0.5]  # sorted, no duplicates
+    assert check_radii((1,)) == [1.0]
+    assert check_outside_search(2.0) == 2.0 and check_outside_search(1) == 1.0
+
+
+@pytest.mark.parametrize("bad", [0.0, 0, -0.0, -0.1, -1, *NON_FINITE, True, "0.2", None])
+def test_check_radii_rejects_bad_values(bad: Any) -> None:
+    with pytest.raises(ValueError, match=r"radii: every radius must be a finite number > 0"):
+        check_radii([0.1, bad])
+
+
+def test_check_radii_rejects_empty_list() -> None:
+    with pytest.raises(ValueError, match=r"radii: the list is empty"):
+        check_radii([])
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.5, *NON_FINITE, True])
+def test_check_outside_search_rejects_bad_values(bad: Any) -> None:
+    with pytest.raises(ValueError, match=r"outside_search_s: must be a finite number > 0"):
+        check_outside_search(bad)
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.2, *NON_FINITE])
+def test_python_entry_points_validate_before_any_computation(tmp_path: Path, bad: float) -> None:
+    """Direct callers (no CLI) get the same validation, before files are read or times built:
+    the manifest path does not exist and the clip's pose.json is broken, yet the error is the
+    parameter error."""
+    missing = tmp_path / "missing.md"
+    with pytest.raises(ValueError, match="radii"):
+        evaluate_dataset(missing, missing, radii=[0.1, bad])
+    with pytest.raises(ValueError, match="outside_search_s"):
+        evaluate_dataset(missing, missing, outside_search_s=bad)
+    broken = _poses(300)
+    broken.frames.pop(10)
+    loaded = _load(tmp_path, _strokes([_ev("e1", 30)]))
+    with pytest.raises(ValueError, match="radii"):
+        evaluate_clip(_clipdata(broken), [], [], loaded, radii=[bad])
+    with pytest.raises(ValueError, match="outside_search_s"):
+        evaluate_clip(_clipdata(broken), [], [], loaded, outside_search_s=bad)
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ("0.1,,0.2", "item 2 is empty"),
+        ("0.1, ,0.2", "item 2 is empty"),
+        ("0.1,0.2,", "item 3 is empty"),
+        ("", "empty: give radii"),
+        ("  ", "empty: give radii"),
+        (",", "item 1 is empty"),
+        ("0.1,abc", "'abc' is not a number"),
+        ("0.1,nan", "'nan' must be a finite number > 0"),
+        ("inf", "'inf' must be a finite number > 0"),
+        ("0.2,-inf", "'-inf' must be a finite number > 0"),
+        ("0", "'0' must be a finite number > 0"),
+        ("-0.1", "'-0.1' must be a finite number > 0"),
+    ],
+)
+def test_cli_rejects_bad_radii_with_clear_message(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], value: str, message: str
+) -> None:
+    manifest, labels, _ = _dataset(tmp_path)
+    out = tmp_path / "strokes_eval.json"
+    with pytest.raises(SystemExit) as exc:
+        _cli().main(["evaluate", str(manifest), str(labels), "--out", str(out), f"--radii={value}"])
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "argument --radii:" in err and message in err, err
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ("nan", "'nan' must be a finite number > 0"),
+        ("inf", "'inf' must be a finite number > 0"),
+        ("-inf", "'-inf' must be a finite number > 0"),
+        ("-1", "'-1' must be a finite number > 0"),
+        ("0", "'0' must be a finite number > 0"),
+        ("two", "'two' is not a number"),
+    ],
+)
+def test_cli_rejects_bad_outside_search(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], value: str, message: str
+) -> None:
+    manifest, labels, _ = _dataset(tmp_path)
+    out = tmp_path / "strokes_eval.json"
+    # "--opt=value": argparse would read a bare "-inf" as an option name
+    args = [
+        "evaluate",
+        str(manifest),
+        str(labels),
+        "--out",
+        str(out),
+        f"--outside-search-s={value}",
+    ]
+    with pytest.raises(SystemExit) as exc:
+        _cli().main(args)
+    assert exc.value.code == 2
+    err = capsys.readouterr().err
+    assert "argument --outside-search-s:" in err and message in err, err
+    assert not out.exists()
+
+
+def test_cli_valid_radii_give_same_result_as_python(tmp_path: Path) -> None:
+    manifest, labels, annotated = _dataset(tmp_path)
+    out = tmp_path / "strokes_eval.json"
+    args = ["evaluate", str(manifest), str(labels), "--out", str(out), "--radii", " 0.3, 0.1,0.3"]
+    assert _cli().main(args) == 0
+    via_cli = StrokesEvalFile.model_validate_json(out.read_text())
+    direct = evaluate_dataset(manifest, labels, annotated, radii=[0.1, 0.3])
+    assert same_eval(via_cli, direct)

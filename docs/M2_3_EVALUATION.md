@@ -20,6 +20,11 @@ uv run python scripts/eval_strokes.py evaluate MANIFEST LABELS --out strokes_eva
     [--targets forehand,backhand] [--outside-search-s 2.0] [--no-input-hashes]
 ```
 
+Numeric parameters are checked before anything is read or computed, from the CLI and
+from Python (`check_radii`, `check_outside_search`): every radius and the search limit must
+be a finite number > 0 (NaN, ±inf, 0 and negatives are refused); `--radii` refuses an empty
+string, an empty list and empty items such as `0.1,,0.2`, naming the option in the error.
+
 Strokes files: `DIR/<clip_id>.strokes.json` or `strokes.json` in each `pose_dir` (as
 `compare`). `annotated.csv` next to the labels is used when present. Clips without a
 strokes file are listed in `clips_without_results`, never dropped silently. The console

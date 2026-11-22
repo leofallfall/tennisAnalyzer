@@ -192,15 +192,27 @@ DECISION_RULE = "decision"
 """Rule name of the last trace step of every event (invariant 8)."""
 
 
-_ANY = r"[^/\\:\x00]"  # any allowed character
-_EDGE = r"[^/\\:\x00\s]"  # allowed at the start / end: no whitespace
-_EDGE_NO_DOT = r"[^/\\:\x00\s.]"
+_FORBIDDEN = r"/\\:\u0000"  # anywhere: separators, drive / stream colon, NUL
+_WHITESPACE = (
+    r"\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a"
+    r"\u2028\u2029\u202f\u205f\u3000"
+)
+"""Exactly the characters for which Python's ``str.isspace()`` is true (what
+``str.strip()`` removes), listed explicitly: ``\\s`` means a different set in Python,
+Rust (Pydantic core) and ECMA-262 (e.g. U+001C-U+001F, U+0085, U+FEFF), so it is not
+used. A test checks this list against ``str.isspace`` over all code points."""
+_ANY = rf"[^{_FORBIDDEN}]"
+_EDGE = rf"[^{_FORBIDDEN}{_WHITESPACE}]"  # first / last character: no whitespace
+_EDGE_NO_DOT = rf"[^{_FORBIDDEN}{_WHITESPACE}.]"
 _FILE_NAME = rf"^(?:{_EDGE_NO_DOT}|{_EDGE_NO_DOT}{_EDGE}|\.{_EDGE_NO_DOT}|{_EDGE}{_ANY}+{_EDGE})$"
-"""The whole :func:`_plain_file_name` contract as one regular expression, exported in the
-JSON Schema so that external validators accept exactly the same names: no ``/``, ``\\``,
-``:`` or NUL anywhere; no whitespace at either end; not empty, ``.`` or ``..`` (length 1:
-not a dot; length 2: not two dots; length 3+: free in the middle). No look-ahead, so the
-pattern behaves the same in Python, Rust (Pydantic core) and ECMA-262 (JSON Schema)."""
+"""The whole :func:`_plain_file_name` contract as one regular expression, used by Pydantic
+and exported unchanged in the JSON Schema, so that external validators accept exactly the
+same names: no ``/``, ``\\``, ``:`` or NUL anywhere; no whitespace at either end; not
+empty, ``.`` or ``..`` (length 1: not a dot; length 2: not two dots; length 3+: free in the
+middle). Only syntax shared by Python ``re``, Rust ``regex`` and ECMA-262 (with or without
+the ``u`` flag): explicit ``\\uXXXX`` classes, no ``\\s``, no look-ahead. ECMA-262 ``$``
+without the ``m`` flag matches only at the end of input; the last character class
+excludes every line terminator anyway. Tests run the exported pattern in Node."""
 
 
 def _plain_file_name(name: str) -> str:

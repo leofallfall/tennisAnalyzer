@@ -31,7 +31,7 @@ by the evaluation tool in a separate `strokes_eval.json` (ADR-022, PR 2), so the
 | `schema`, `schema_version` | `"tpa.strokes"`, `"1.0"` |
 | `created_at` | the only field ignored by repeatability checks |
 | `producer` | algorithm name and version, `status: experimental`, engine version |
-| `inputs.pose` | plain file name (no `/`, `\`, `:`, NUL, `.` or `..`: never a path, checked before any file access; the exported JSON Schema `pattern` encodes the same rule), sha256 of the bytes, fps, frame count, `frame_stride` |
+| `inputs.pose` | plain file name (no `/`, `\`, `:`, NUL, `.` or `..`: never a path, checked before any file access; the exported JSON Schema `pattern` encodes the same rule, whitespace = exactly Python `str.isspace()` listed as `\uXXXX` ranges, no `\s`; tests run it in Node with and without the `u` flag), sha256 of the bytes, fps, frame count, `frame_stride` |
 | `inputs.timemap` | plain file name (same rule) and sha256 (both null when `missing`), `status` as `build_timebase` reports it |
 | `inputs.player_config` | reserved for the player configuration of M2.2 #6; null and unused in 1.0 |
 | `time_basis` | `source` (consistent map) or `proxy`, same values as `signals.timebase` |

@@ -10,6 +10,8 @@ import copy
 import importlib.util
 import json
 import re
+import shutil
+import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -18,6 +20,7 @@ from typing import Any
 import pytest
 
 from tennis_cv.strokes.artifact import (
+    _WHITESPACE,
     SCHEMA_VERSION,
     StrokesFile,
     StrokesFormatError,
@@ -25,6 +28,7 @@ from tennis_cv.strokes.artifact import (
     StrokesInvariantError,
     StrokesSchemaTooNewError,
     StrokesSchemaUnsupportedError,
+    _plain_file_name,
     check_inputs,
     check_invariants,
     dump_strokes,
@@ -546,56 +550,118 @@ def _file_schema(field: str) -> Doc:
     return prop
 
 
-def _json_schema_accepts(schema: Doc, value: str) -> bool:
-    """JSON Schema semantics of the keywords used by the string branch.
+# Exported patterns are run by a real ECMA-262 engine (Node / V8, already required by the
+# web toolchain), never re-interpreted in Python: JSON Schema ``pattern`` is ECMA-262, and
+# its ``$``, ``\\s`` and escapes differ from Python ``re`` and from Rust ``regex``.
+_NODE = shutil.which("node")
+_NODE_SCRIPT = """
+const {pattern, values} = JSON.parse(require('fs').readFileSync(0, 'utf8'))
+const plain = new RegExp(pattern)
+const unicode = new RegExp(pattern, 'u')
+process.stdout.write(JSON.stringify(values.map((v) => [plain.test(v), unicode.test(v)])))
+"""
 
-    ``pattern`` is an ECMA-262 regex searched anywhere in the value; without the ``m``
-    flag ``$`` matches only at the end of input, i.e. Python's ``\\Z`` (Python's ``$``
-    would also match before a final newline). Any other keyword fails the test, so a new
-    keyword cannot be silently ignored here.
-    """
+
+def _ecma_test(pattern: str, values: list[str]) -> list[tuple[bool, bool]]:
+    """``RegExp(pattern).test(v)`` in Node, without and with the ``u`` flag."""
+    assert _NODE, "node is required to check the exported JSON Schema (pnpm toolchain)"
+    out = subprocess.run(
+        [_NODE, "-e", _NODE_SCRIPT],
+        input=json.dumps({"pattern": pattern, "values": values}),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+        timeout=60,
+    ).stdout
+    return [(bool(a), bool(b)) for a, b in json.loads(out)]
+
+
+def _string_keywords(schema: Doc) -> str:
+    """The pattern of the string branch; any other validation keyword fails the test, so a
+    new keyword cannot be silently ignored here."""
     assert set(schema) <= {"type", "pattern", "description", "title"}, schema
     assert schema["type"] == "string"
     pattern: str = schema["pattern"]
-    assert pattern.endswith("$")
-    return re.search(pattern[:-1] + r"\Z", value) is not None
+    return pattern
+
+
+def _json_schema_accepts_all(field: str, values: list[str]) -> list[bool]:
+    """JSON Schema verdict of the exported ``inputs.<field>.file`` for each value, from
+    Node; also checks that the ``u`` flag does not change the verdict."""
+    results = _ecma_test(_string_keywords(_file_schema(field)), values)
+    for value, (plain, unicode) in zip(values, results, strict=True):
+        assert plain is unicode, f"u flag changes the verdict for {value!r}"
+    return [plain for plain, _ in results]
+
+
+LINE_END_NAMES = [
+    "pose.json\n",
+    "pose.json\r",
+    "pose.json\r\n",
+    "pose.json\u2028",
+    "pose.json\u2029",
+]
+PYTHON_WHITESPACE = [chr(c) for c in range(0x110000) if chr(c).isspace()]
+OTHER_SPACE_LIKE = ["\ufeff", "\u200b", "\u180e", "\u2060"]  # not str.isspace()
+AGREEMENT_NAMES = [
+    *SCHEMA_BAD_NAMES,
+    *LINE_END_NAMES,
+    *ORDINARY_NAMES,
+    *BAD_NAMES,
+    "a",
+    ".x",
+    "x.",
+    "...",
+    "..x",
+    ".. ",
+    "a b",
+    *(f"{c}pose.json" for c in PYTHON_WHITESPACE + OTHER_SPACE_LIKE),
+    *(f"pose.json{c}" for c in PYTHON_WHITESPACE + OTHER_SPACE_LIKE),
+    *(f"po{c}se.json" for c in PYTHON_WHITESPACE + OTHER_SPACE_LIKE),
+    *(c for c in PYTHON_WHITESPACE + OTHER_SPACE_LIKE),
+]
+
+
+def test_whitespace_class_is_exactly_python_isspace() -> None:
+    """``_WHITESPACE`` lists exactly what ``_plain_file_name`` strips, over all code points."""
+    listed = re.compile(f"[{_WHITESPACE}]")
+    every = (chr(c) for c in range(0x110000))
+    assert [c for c in every if (listed.fullmatch(c) is not None) != c.isspace()] == []
 
 
 @pytest.mark.parametrize("field", ["pose", "timemap"])
-@pytest.mark.parametrize("name", SCHEMA_BAD_NAMES)
-def test_exported_schema_rejects_bad_file_names(field: str, name: str) -> None:
-    assert not _json_schema_accepts(_file_schema(field), name)
+def test_exported_schema_rejects_bad_file_names(field: str) -> None:
+    names = SCHEMA_BAD_NAMES + LINE_END_NAMES
+    verdicts = _json_schema_accepts_all(field, names)
+    assert [n for n, ok in zip(names, verdicts, strict=True) if ok] == []
 
 
 @pytest.mark.parametrize("field", ["pose", "timemap"])
-@pytest.mark.parametrize("name", ORDINARY_NAMES)
-def test_exported_schema_accepts_ordinary_file_names(field: str, name: str) -> None:
-    assert _json_schema_accepts(_file_schema(field), name)
+def test_exported_schema_accepts_ordinary_file_names(field: str) -> None:
+    verdicts = _json_schema_accepts_all(field, ORDINARY_NAMES)
+    assert [n for n, ok in zip(ORDINARY_NAMES, verdicts, strict=True) if not ok] == []
 
 
 @pytest.mark.parametrize("field", ["pose", "timemap"])
-@pytest.mark.parametrize(
-    "name",
-    [
-        *SCHEMA_BAD_NAMES,
-        *ORDINARY_NAMES,
-        *BAD_NAMES,
-        "a",
-        ".x",
-        "x.",
-        "...",
-        "..x",
-        "a b",
-        "\tpose.json",
-        "pose.json\n",
-        "pose.json\u00a0",
-    ],
-)
-def test_exported_schema_and_pydantic_agree(raw: Doc, field: str, name: str) -> None:
-    raw["inputs"][field]["file"] = name
-    try:
-        parse_strokes(_text(raw))
-        pydantic_ok = True
-    except StrokesFormatError:
-        pydantic_ok = False
-    assert _json_schema_accepts(_file_schema(field), name) is pydantic_ok
+def test_exported_schema_pydantic_and_plain_file_name_agree(raw: Doc, field: str) -> None:
+    """Same verdict from Node on the exported schema, Pydantic (``parse_strokes``) and
+    ``_plain_file_name``, for every name above, every ``str.isspace`` character at the
+    start, end, middle and alone, and characters other engines call space (U+FEFF ...)."""
+    schema_ok = _json_schema_accepts_all(field, AGREEMENT_NAMES)
+    disagreements = []
+    for name, by_schema in zip(AGREEMENT_NAMES, schema_ok, strict=True):
+        raw["inputs"][field]["file"] = name
+        try:
+            parse_strokes(_text(raw))
+            by_pydantic = True
+        except StrokesFormatError:
+            by_pydantic = False
+        try:
+            _plain_file_name(name)
+            by_function = True
+        except ValueError:
+            by_function = False
+        if not by_schema is by_pydantic is by_function:
+            disagreements.append((name, by_schema, by_pydantic, by_function))
+    assert disagreements == []

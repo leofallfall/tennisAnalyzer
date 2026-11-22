@@ -506,21 +506,44 @@ Side view from the forehand side (img4912, 7 impacts): forehand line angles lie 
 All 34 impacts have a torso scale (`ok`); states at the impacts are `valid` except one
 `edge` backhand (img5098 frame 676).
 
-Seen, not explained: img4894 frame 853 (forehand) has shoulder 77°, hip 147°, shoulder width
-0.18, far from the other forehands (possibly swapped or wrong hip keypoints); img5098 frame
-582 (forehand) has the right wrist at −0.11 lateral. Both are worth an overlay check before
-M3.1; nothing is corrected here.
+Two impacts checked on the overlay (developer's review, 2026-11-22; sheet
+`m2_2/anomalie_overlay_pr10.jpg` in the project files):
 
-**Main finding for later steps:** with the GOOD-only rule, the distance between the hands is
-almost never available at the impact in the behind view (1 of 27), because the wrist hidden
-behind the body is LOW or unreliable there. The rule is kept as approved; whether M2.3/M3.1
-needs this distance at impact, or only in phases where both hands are visible, is an open
-decision.
+* **img4894 frame 853 (forehand):** shoulder 77°, hip 147°, shoulder width 0.18, hip width
+  0.01. The keypoints used are correct (right wrist on the racket, visibility 0.97; no
+  left/right swap). The player is very close to the camera and almost in profile, so the
+  two hips overlap (138,752 and 137,752 px) and the shoulders nearly do: the line angles are
+  computable but have no geometric meaning (the hip angle jumps from 147° to 4° between
+  frames 853 and 854). Cause: the view, not occlusion or a model error. Widths and the wrist
+  position are not affected. The same situation (hip width below 0.1 torso) occurs at 3 of
+  the 34 impacts (img4894 853, img5098_1 37, img4912_m3 700).
+* **img5098 frame 582 (forehand):** right wrist at −0.11 lateral, 0.56 vertical. Shoulders
+  and hips are correct; at frames 581–582 the right arm crosses in front of the body and the
+  wrist is hidden by the torso, so its drawn position (on the chest) is an estimate
+  (visibility 0.96 → 0.67, still GOOD; below 0.5 from frame 586). No swap. Here the wrist's
+  lateral position changes by about **0.3 torso lengths per frame** (0.90 at frame 578, 0.27
+  at 580), so the position at impact is very sensitive to the time error of the label: the
+  impact may be 1–3 frames earlier than labelled, but this cannot be confirmed on the
+  images (the ball is not visible). Nothing is corrected here.
+
+**Distance between the hands (decision, 2026-11-22).** Both wrists must be GOOD over the
+whole fitting window; otherwise the state is `low_excluded`. The quality thresholds are not
+changed. The measure is usable only on samples where both hands are sufficiently
+observable: it is **not** a generally usable indicator at the impact (in the behind view it
+has a value at 1 of 27 impacts, because the wrist hidden behind the body is LOW or
+unreliable there); it may be assessed in parts of the stroke where both hands are visible.
 
 ### 7.2 Limits
 
 * All signals are 2D projections: angles mix rotation, tilt and the camera view; widths
   shrink with rotation and with distance errors of the scale.
+* **Validity of line angles.** An angle is computable whenever both keypoints have a
+  value, but it is geometrically interpretable only if the apparent width of the line is
+  not very small compared with the torso scale: when the line points along the camera
+  axis (player in profile) the two keypoints nearly coincide and the direction is
+  dominated by keypoint noise (§7.1, img4894 frame 853). A computed value is therefore not
+  the same as a valid orientation; read the angle together with the width of the same
+  line. No width threshold is set in M2.2 (none is validated).
 * MediaPipe left/right swaps of a keypoint pair flip a line angle by about 180° and are not
   detected here.
 * Wrist positions inherit the noise of three keypoints (wrist and both hips).

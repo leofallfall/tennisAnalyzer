@@ -13,10 +13,18 @@ Usage:
         [--results-dir DIR] [--tolerance-s 0.25] [--targets forehand,backhand]
         [--out REPORT.md] [--json DATA.json]
     uv run python scripts/eval_strokes.py validate-strokes STROKES [--inputs DIR | --no-inputs]
+    uv run python scripts/eval_strokes.py evaluate MANIFEST LABELS --out STROKES_EVAL.json
+        [--annotated ANNOTATED.csv] [--results-dir DIR] [--radii 0.1,0.2,0.3,0.5]
+        [--targets forehand,backhand] [--outside-search-s 2.0] [--no-input-hashes]
 
 ``validate-strokes`` checks a strokes.json 1.x file: version, schema, the eight invariants
 and (unless --no-inputs) the sha256 of pose.json / timemap.json in DIR (default: the
 folder of STROKES). See docs/M2_3_EVENTS.md.
+
+``evaluate`` associates the events of each clip's strokes file (1.x, or the M2.1 minimal
+format) with the labels, one radius at a time, and writes strokes_eval.json: every edge,
+connected components, intercepted / missed / ambiguous impacts with miss causes, and every
+unassociated event with its position and verdict. See docs/M2_3_EVALUATION.md.
 
 DIR defaults to tests/fixtures/real (git-ignored: real footage is never committed).
 """
@@ -47,6 +55,13 @@ from tennis_cv.evaluation.dataset import (
     load_clip_data,
     load_labels,
     load_manifest,
+)
+from tennis_cv.evaluation.eval_artifact import dump_eval
+from tennis_cv.evaluation.evaluate import (
+    DEFAULT_OUTSIDE_SEARCH_S,
+    DEFAULT_RADII_S,
+    evaluate_dataset,
+    summary_lines,
 )
 from tennis_cv.evaluation.matching import (
     DEFAULT_TARGETS,
@@ -350,6 +365,42 @@ def cmd_validate_strokes(args: argparse.Namespace) -> int:
     return 0
 
 
+def _floats(text: str) -> list[float]:
+    try:
+        return [float(x) for x in text.split(",") if x.strip()]
+    except ValueError as exc:
+        raise ValueError(f"--radii: {text!r} is not a comma-separated list of numbers") from exc
+
+
+def cmd_evaluate(args: argparse.Namespace) -> int:
+    annotated = args.annotated
+    if annotated is None and (args.labels.parent / ANNOTATED_FILE).is_file():
+        annotated = args.labels.parent / ANNOTATED_FILE
+    doc = evaluate_dataset(
+        args.manifest,
+        args.labels,
+        annotated,
+        results_dir=args.results_dir,
+        radii=_floats(args.radii),
+        targets=frozenset(LabelStrokeType(t) for t in args.targets.split(",") if t),
+        outside_search_s=args.outside_search_s,
+        check_input_hashes=not args.no_input_hashes,
+    )
+    for w in doc.warnings:
+        print(f"WARNING {w}", file=sys.stderr)
+    for c in doc.clips:
+        for w in c.warnings:
+            print(f"WARNING {w}", file=sys.stderr)
+    for line in summary_lines(doc):
+        print(line)
+    args.out.write_text(dump_eval(doc), encoding="utf-8")
+    print(f"evaluation written: {args.out}")
+    if not doc.clips:
+        print("No clip had a strokes file: nothing evaluated.", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
@@ -395,6 +446,25 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--inputs", type=Path, default=None, help="folder with pose.json/timemap.json")
     g.add_argument("--no-inputs", action="store_true", help="skip the input hash check")
     s.set_defaults(func=cmd_validate_strokes)
+
+    s = sub.add_parser("evaluate", help="associate strokes.json events with labels")
+    s.add_argument("manifest", type=Path)
+    s.add_argument("labels", type=Path)
+    s.add_argument("--out", type=Path, required=True, help="strokes_eval.json to write")
+    s.add_argument(
+        "--annotated",
+        type=Path,
+        default=None,
+        help=f"annotated intervals (default: {ANNOTATED_FILE} next to LABELS, if any)",
+    )
+    s.add_argument("--results-dir", type=Path, default=None)
+    s.add_argument("--radii", default=",".join(f"{r:g}" for r in DEFAULT_RADII_S))
+    s.add_argument("--targets", default=",".join(sorted(t.value for t in DEFAULT_TARGETS)))
+    s.add_argument("--outside-search-s", type=float, default=DEFAULT_OUTSIDE_SEARCH_S)
+    s.add_argument(
+        "--no-input-hashes", action="store_true", help="skip the pose/timemap sha256 check"
+    )
+    s.set_defaults(func=cmd_evaluate)
 
     args = p.parse_args(argv)
     try:

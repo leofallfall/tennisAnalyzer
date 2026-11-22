@@ -1,0 +1,1454 @@
+{
+  "$defs": {
+    "AmbiguityReason": {
+      "enum": [
+        "several_events",
+        "several_labels"
+      ],
+      "title": "AmbiguityReason",
+      "type": "string"
+    },
+    "ClipEval": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "events": {
+          "items": {
+            "$ref": "#/$defs/EventInfo"
+          },
+          "title": "Events",
+          "type": "array"
+        },
+        "gaps": {
+          "$ref": "#/$defs/GapInfo"
+        },
+        "intervals": {
+          "items": {
+            "$ref": "#/$defs/IntervalInfo"
+          },
+          "title": "Intervals",
+          "type": "array"
+        },
+        "labels": {
+          "items": {
+            "$ref": "#/$defs/LabelInfo"
+          },
+          "title": "Labels",
+          "type": "array"
+        },
+        "map_status": {
+          "$ref": "#/$defs/MapStatus"
+        },
+        "params_used": {
+          "$ref": "#/$defs/ParamsUsed"
+        },
+        "radii": {
+          "items": {
+            "$ref": "#/$defs/RadiusResult"
+          },
+          "title": "Radii",
+          "type": "array"
+        },
+        "strokes": {
+          "$ref": "#/$defs/StrokesRef"
+        },
+        "time_basis": {
+          "$ref": "#/$defs/TimeBasis"
+        },
+        "transitions": {
+          "items": {
+            "$ref": "#/$defs/Transition"
+          },
+          "title": "Transitions",
+          "type": "array"
+        },
+        "unverified_time": {
+          "title": "Unverified Time",
+          "type": "boolean"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "clip_id",
+        "strokes",
+        "time_basis",
+        "map_status",
+        "unverified_time",
+        "params_used",
+        "intervals",
+        "labels",
+        "events",
+        "gaps",
+        "radii",
+        "transitions",
+        "warnings"
+      ],
+      "title": "ClipEval",
+      "type": "object"
+    },
+    "EdgeOut": {
+      "additionalProperties": false,
+      "properties": {
+        "distance_s": {
+          "title": "Distance S",
+          "type": "number"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "label_line": {
+          "title": "Label Line",
+          "type": "integer"
+        },
+        "signed_s": {
+          "description": "event - label",
+          "title": "Signed S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "event_id",
+        "label_line",
+        "distance_s",
+        "signed_s"
+      ],
+      "title": "EdgeOut",
+      "type": "object"
+    },
+    "EvalInputs": {
+      "additionalProperties": false,
+      "properties": {
+        "annotated": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FileRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None when no annotated.csv was given"
+        },
+        "labels": {
+          "$ref": "#/$defs/FileRef"
+        },
+        "manifest": {
+          "$ref": "#/$defs/FileRef"
+        }
+      },
+      "required": [
+        "manifest",
+        "labels",
+        "annotated"
+      ],
+      "title": "EvalInputs",
+      "type": "object"
+    },
+    "EvalParams": {
+      "additionalProperties": false,
+      "properties": {
+        "numeric_tolerance_s": {
+          "description": "Edge if distance <= r + this",
+          "title": "Numeric Tolerance S",
+          "type": "number"
+        },
+        "outside_radius_search_s": {
+          "description": "Search limit of event_outside_radius (diagnosis only, not a threshold)",
+          "title": "Outside Radius Search S",
+          "type": "number"
+        },
+        "radii_s": {
+          "items": {
+            "type": "number"
+          },
+          "minItems": 1,
+          "title": "Radii S",
+          "type": "array"
+        },
+        "target_player": {
+          "title": "Target Player",
+          "type": "string"
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/$defs/LabelStrokeType"
+          },
+          "minItems": 1,
+          "title": "Targets",
+          "type": "array"
+        },
+        "time_tolerance_s": {
+          "description": "Allowed difference between seconds written in strokes.json and t(f)",
+          "title": "Time Tolerance S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "radii_s",
+        "targets",
+        "target_player",
+        "numeric_tolerance_s",
+        "time_tolerance_s",
+        "outside_radius_search_s"
+      ],
+      "title": "EvalParams",
+      "type": "object"
+    },
+    "EvalProducer": {
+      "additionalProperties": false,
+      "properties": {
+        "engine_version": {
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "tool": {
+          "default": "eval_strokes.evaluate",
+          "title": "Tool",
+          "type": "string"
+        }
+      },
+      "required": [
+        "engine_version"
+      ],
+      "title": "EvalProducer",
+      "type": "object"
+    },
+    "EventInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "in_graph": {
+          "description": "accepted / uncertain; rejected events stay out",
+          "title": "In Graph",
+          "type": "boolean"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "status": {
+          "$ref": "#/$defs/EventStatus"
+        },
+        "t_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Instant (representative wrist determined)",
+          "title": "T S"
+        },
+        "window_proxy_frames": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Window Proxy Frames",
+          "type": "array"
+        },
+        "window_t_s": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Window T S",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "in_graph",
+        "t_s",
+        "window_t_s",
+        "window_proxy_frames",
+        "reasons"
+      ],
+      "title": "EventInfo",
+      "type": "object"
+    },
+    "EventStatus": {
+      "enum": [
+        "accepted",
+        "uncertain",
+        "rejected"
+      ],
+      "title": "EventStatus",
+      "type": "string"
+    },
+    "FileRef": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "description": "File name only",
+          "title": "File",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "sha256"
+      ],
+      "title": "FileRef",
+      "type": "object"
+    },
+    "FrameState": {
+      "enum": [
+        "sample",
+        "not_sampled_stride",
+        "repeated_frame",
+        "no_pose_frame"
+      ],
+      "title": "FrameState",
+      "type": "string"
+    },
+    "GapInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "gap_lines": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Gap Lines"
+        },
+        "max_event_span_s": {
+          "description": "W: actual maximum b - a of graph events",
+          "title": "Max Event Span S",
+          "type": "number"
+        },
+        "max_span_event_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Max Span Event Id"
+        },
+        "min_label_gap_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Min Label Gap S"
+        }
+      },
+      "required": [
+        "min_label_gap_s",
+        "gap_lines",
+        "max_event_span_s",
+        "max_span_event_id"
+      ],
+      "title": "GapInfo",
+      "type": "object"
+    },
+    "GroupOutcome": {
+      "enum": [
+        "intercepted",
+        "intercepted_uncertain",
+        "missed",
+        "unassociated_event",
+        "ambiguous"
+      ],
+      "title": "GroupOutcome",
+      "type": "string"
+    },
+    "ImpactOutcome": {
+      "enum": [
+        "intercepted",
+        "intercepted_uncertain",
+        "missed",
+        "ambiguous"
+      ],
+      "title": "ImpactOutcome",
+      "type": "string"
+    },
+    "ImpactResult": {
+      "additionalProperties": false,
+      "properties": {
+        "group_id": {
+          "title": "Group Id",
+          "type": "string"
+        },
+        "interception": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Interception"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "irregular_intervals_in_window": {
+          "title": "Irregular Intervals In Window",
+          "type": "integer"
+        },
+        "irregular_time_in_window": {
+          "title": "Irregular Time In Window",
+          "type": "boolean"
+        },
+        "label_line": {
+          "title": "Label Line",
+          "type": "integer"
+        },
+        "miss": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Miss"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outcome": {
+          "$ref": "#/$defs/ImpactOutcome"
+        }
+      },
+      "required": [
+        "label_line",
+        "group_id",
+        "outcome",
+        "interception",
+        "miss",
+        "irregular_intervals_in_window",
+        "irregular_time_in_window"
+      ],
+      "title": "ImpactResult",
+      "type": "object"
+    },
+    "ImpactVisibility": {
+      "description": "Human judgement of how well the impact can be seen in the video.",
+      "enum": [
+        "full",
+        "partial",
+        "none"
+      ],
+      "title": "ImpactVisibility",
+      "type": "string"
+    },
+    "Interception": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "event_signed_frames": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Event Signed Frames"
+        },
+        "event_signed_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None for a window-only event",
+          "title": "Event Signed S"
+        },
+        "event_status": {
+          "$ref": "#/$defs/EventStatus"
+        },
+        "peaks": {
+          "items": {
+            "$ref": "#/$defs/PeakOffset"
+          },
+          "title": "Peaks",
+          "type": "array"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_status",
+        "event_signed_s",
+        "event_signed_frames",
+        "peaks"
+      ],
+      "title": "Interception",
+      "type": "object"
+    },
+    "IntervalInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "end_frame": {
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "end_t_s": {
+          "title": "End T S",
+          "type": "number"
+        },
+        "exhaustive": {
+          "title": "Exhaustive",
+          "type": "boolean"
+        },
+        "line": {
+          "title": "Line",
+          "type": "integer"
+        },
+        "missing_players": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Missing Players"
+        },
+        "missing_types": {
+          "items": {
+            "$ref": "#/$defs/LabelStrokeType"
+          },
+          "title": "Missing Types",
+          "type": "array"
+        },
+        "start_frame": {
+          "title": "Start Frame",
+          "type": "integer"
+        },
+        "start_t_s": {
+          "title": "Start T S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "line",
+        "start_frame",
+        "end_frame",
+        "start_t_s",
+        "end_t_s",
+        "exhaustive",
+        "missing_types",
+        "missing_players"
+      ],
+      "title": "IntervalInfo",
+      "type": "object"
+    },
+    "LabelInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "estimated_frame": {
+          "description": "visibility = partial: frame estimated by hand",
+          "title": "Estimated Frame",
+          "type": "boolean"
+        },
+        "frame_state": {
+          "$ref": "#/$defs/FrameState"
+        },
+        "kept_frame": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Kept Frame"
+        },
+        "kept_frame_detected": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Kept Frame Detected"
+        },
+        "kinematic_sample": {
+          "title": "Kinematic Sample",
+          "type": "boolean"
+        },
+        "line": {
+          "description": "Line in labels.csv: the label's id in this file",
+          "title": "Line",
+          "type": "integer"
+        },
+        "nearest_sample_dt_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Nearest Sample Dt S"
+        },
+        "overlay_wrist": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OverlayWrist"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "player": {
+          "title": "Player",
+          "type": "string"
+        },
+        "proxy_frame": {
+          "title": "Proxy Frame",
+          "type": "integer"
+        },
+        "role": {
+          "$ref": "#/$defs/LabelRole"
+        },
+        "stroke_type": {
+          "$ref": "#/$defs/LabelStrokeType"
+        },
+        "t_s": {
+          "title": "T S",
+          "type": "number"
+        },
+        "visibility": {
+          "$ref": "#/$defs/ImpactVisibility"
+        }
+      },
+      "required": [
+        "line",
+        "proxy_frame",
+        "stroke_type",
+        "player",
+        "visibility",
+        "overlay_wrist",
+        "role",
+        "t_s",
+        "frame_state",
+        "kinematic_sample",
+        "kept_frame",
+        "kept_frame_detected",
+        "nearest_sample_dt_s",
+        "estimated_frame"
+      ],
+      "title": "LabelInfo",
+      "type": "object"
+    },
+    "LabelRole": {
+      "enum": [
+        "target",
+        "other"
+      ],
+      "title": "LabelRole",
+      "type": "string"
+    },
+    "LabelStrokeType": {
+      "enum": [
+        "forehand",
+        "backhand",
+        "serve",
+        "volley",
+        "other",
+        "none"
+      ],
+      "title": "LabelStrokeType",
+      "type": "string"
+    },
+    "MapStatus": {
+      "enum": [
+        "ok",
+        "missing",
+        "inconsistent"
+      ],
+      "title": "MapStatus",
+      "type": "string"
+    },
+    "Miss": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "$ref": "#/$defs/MissCause"
+        },
+        "discarded_peaks": {
+          "description": "Discarded peaks within r",
+          "items": {
+            "$ref": "#/$defs/NearbyPeak"
+          },
+          "title": "Discarded Peaks",
+          "type": "array"
+        },
+        "nearest_free_event": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OutsideRadius"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rejected_events": {
+          "description": "Rejected events within r",
+          "items": {
+            "$ref": "#/$defs/NearbyEvent"
+          },
+          "title": "Rejected Events",
+          "type": "array"
+        }
+      },
+      "required": [
+        "cause",
+        "rejected_events",
+        "discarded_peaks",
+        "nearest_free_event"
+      ],
+      "title": "Miss",
+      "type": "object"
+    },
+    "MissCause": {
+      "description": "Closed list, fixed precedence (first that applies).",
+      "enum": [
+        "no_pose",
+        "both_wrists_unreliable",
+        "event_rejected",
+        "peak_discarded",
+        "event_outside_radius",
+        "no_peak"
+      ],
+      "title": "MissCause",
+      "type": "string"
+    },
+    "NearbyEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "distance_s": {
+          "title": "Distance S",
+          "type": "number"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        }
+      },
+      "required": [
+        "event_id",
+        "distance_s",
+        "reasons"
+      ],
+      "title": "NearbyEvent",
+      "type": "object"
+    },
+    "NearbyPeak": {
+      "additionalProperties": false,
+      "properties": {
+        "peak_id": {
+          "title": "Peak Id",
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "signed_s": {
+          "title": "Signed S",
+          "type": "number"
+        },
+        "wrist": {
+          "$ref": "#/$defs/Wrist"
+        }
+      },
+      "required": [
+        "peak_id",
+        "wrist",
+        "signed_s",
+        "reasons"
+      ],
+      "title": "NearbyPeak",
+      "type": "object"
+    },
+    "NearestTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "label_line": {
+          "title": "Label Line",
+          "type": "integer"
+        },
+        "signed_s": {
+          "description": "event - label",
+          "title": "Signed S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "label_line",
+        "signed_s"
+      ],
+      "title": "NearestTarget",
+      "type": "object"
+    },
+    "OtherGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "ambiguity": {
+          "items": {
+            "$ref": "#/$defs/AmbiguityReason"
+          },
+          "title": "Ambiguity",
+          "type": "array"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Event Ids",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label_lines": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Label Lines",
+          "type": "array"
+        },
+        "outcome": {
+          "$ref": "#/$defs/OtherGroupOutcome"
+        }
+      },
+      "required": [
+        "id",
+        "event_ids",
+        "label_lines",
+        "ambiguity",
+        "outcome"
+      ],
+      "title": "OtherGroup",
+      "type": "object"
+    },
+    "OtherGroupOutcome": {
+      "enum": [
+        "associated",
+        "unlabelled",
+        "label_only",
+        "ambiguous"
+      ],
+      "title": "OtherGroupOutcome",
+      "type": "string"
+    },
+    "OutsideRadius": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "shared_with": {
+          "description": "Other missed impacts (label lines) for which this event is the nearest free one: cited for all of them, assigned to none",
+          "items": {
+            "type": "integer"
+          },
+          "title": "Shared With",
+          "type": "array"
+        },
+        "signed_s": {
+          "description": "event - label",
+          "title": "Signed S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "event_id",
+        "signed_s",
+        "shared_with"
+      ],
+      "title": "OutsideRadius",
+      "type": "object"
+    },
+    "OverlayWrist": {
+      "description": "Human check, on the overlay frame of the impact, of the drawn hitting wrist.",
+      "enum": [
+        "ok",
+        "off",
+        "missing",
+        "other_person"
+      ],
+      "title": "OverlayWrist",
+      "type": "string"
+    },
+    "ParamsSource": {
+      "enum": [
+        "strokes_json",
+        "defaults"
+      ],
+      "title": "ParamsSource",
+      "type": "string"
+    },
+    "ParamsUsed": {
+      "additionalProperties": false,
+      "properties": {
+        "good_visibility": {
+          "title": "Good Visibility",
+          "type": "number"
+        },
+        "source": {
+          "$ref": "#/$defs/ParamsSource"
+        },
+        "timebase": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Timebase",
+          "type": "object"
+        },
+        "usable_visibility": {
+          "title": "Usable Visibility",
+          "type": "number"
+        }
+      },
+      "required": [
+        "source",
+        "timebase",
+        "good_visibility",
+        "usable_visibility"
+      ],
+      "title": "ParamsUsed",
+      "type": "object"
+    },
+    "PeakOffset": {
+      "additionalProperties": false,
+      "properties": {
+        "peak_id": {
+          "title": "Peak Id",
+          "type": "string"
+        },
+        "signed_frames": {
+          "description": "peak proxy frame - label proxy frame",
+          "title": "Signed Frames",
+          "type": "integer"
+        },
+        "signed_s": {
+          "description": "peak - label",
+          "title": "Signed S",
+          "type": "number"
+        },
+        "wrist": {
+          "$ref": "#/$defs/Wrist"
+        }
+      },
+      "required": [
+        "peak_id",
+        "wrist",
+        "signed_s",
+        "signed_frames"
+      ],
+      "title": "PeakOffset",
+      "type": "object"
+    },
+    "Position": {
+      "description": "Where an unassociated event sits with respect to the annotated intervals.",
+      "enum": [
+        "inside",
+        "near_boundary",
+        "outside_annotated",
+        "no_intervals"
+      ],
+      "title": "Position",
+      "type": "string"
+    },
+    "RadiusResult": {
+      "additionalProperties": false,
+      "properties": {
+        "impacts": {
+          "items": {
+            "$ref": "#/$defs/ImpactResult"
+          },
+          "title": "Impacts",
+          "type": "array"
+        },
+        "other_edges": {
+          "items": {
+            "$ref": "#/$defs/EdgeOut"
+          },
+          "title": "Other Edges",
+          "type": "array"
+        },
+        "other_groups": {
+          "items": {
+            "$ref": "#/$defs/OtherGroup"
+          },
+          "title": "Other Groups",
+          "type": "array"
+        },
+        "radius_s": {
+          "title": "Radius S",
+          "type": "number"
+        },
+        "status": {
+          "$ref": "#/$defs/RadiusStatus"
+        },
+        "status_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Status Reason"
+        },
+        "target_edges": {
+          "items": {
+            "$ref": "#/$defs/EdgeOut"
+          },
+          "title": "Target Edges",
+          "type": "array"
+        },
+        "target_groups": {
+          "items": {
+            "$ref": "#/$defs/TargetGroup"
+          },
+          "title": "Target Groups",
+          "type": "array"
+        },
+        "unassociated_events": {
+          "items": {
+            "$ref": "#/$defs/UnassociatedEvent"
+          },
+          "title": "Unassociated Events",
+          "type": "array"
+        }
+      },
+      "required": [
+        "radius_s",
+        "status",
+        "status_reason",
+        "target_edges",
+        "target_groups",
+        "other_edges",
+        "other_groups",
+        "impacts",
+        "unassociated_events"
+      ],
+      "title": "RadiusResult",
+      "type": "object"
+    },
+    "RadiusStatus": {
+      "enum": [
+        "ok",
+        "not_interpretable",
+        "not_applicable"
+      ],
+      "title": "RadiusStatus",
+      "type": "string"
+    },
+    "StrokesFormat": {
+      "enum": [
+        "strokes_1",
+        "m2_1_minimal"
+      ],
+      "title": "StrokesFormat",
+      "type": "string"
+    },
+    "StrokesRef": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "title": "File",
+          "type": "string"
+        },
+        "format": {
+          "$ref": "#/$defs/StrokesFormat"
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "algorithm version, None for the minimal format",
+          "title": "Producer"
+        },
+        "schema_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Schema Version"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "sha256",
+        "format",
+        "schema_version",
+        "producer"
+      ],
+      "title": "StrokesRef",
+      "type": "object"
+    },
+    "TargetGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "ambiguity": {
+          "items": {
+            "$ref": "#/$defs/AmbiguityReason"
+          },
+          "title": "Ambiguity",
+          "type": "array"
+        },
+        "event_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Event Ids",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "label_lines": {
+          "items": {
+            "type": "integer"
+          },
+          "title": "Label Lines",
+          "type": "array"
+        },
+        "outcome": {
+          "$ref": "#/$defs/GroupOutcome"
+        }
+      },
+      "required": [
+        "id",
+        "event_ids",
+        "label_lines",
+        "ambiguity",
+        "outcome"
+      ],
+      "title": "TargetGroup",
+      "type": "object"
+    },
+    "TimeBasis": {
+      "enum": [
+        "source",
+        "proxy"
+      ],
+      "title": "TimeBasis",
+      "type": "string"
+    },
+    "Transition": {
+      "additionalProperties": false,
+      "properties": {
+        "from_outcome": {
+          "$ref": "#/$defs/ImpactOutcome"
+        },
+        "from_radius_s": {
+          "title": "From Radius S",
+          "type": "number"
+        },
+        "label_line": {
+          "title": "Label Line",
+          "type": "integer"
+        },
+        "to_outcome": {
+          "$ref": "#/$defs/ImpactOutcome"
+        },
+        "to_radius_s": {
+          "title": "To Radius S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "label_line",
+        "from_radius_s",
+        "from_outcome",
+        "to_radius_s",
+        "to_outcome"
+      ],
+      "title": "Transition",
+      "type": "object"
+    },
+    "UnassociatedCause": {
+      "description": "Automatic cause from the second graph (only with verdict ``judged``).",
+      "enum": [
+        "non_target_stroke",
+        "not_a_stroke",
+        "other_player",
+        "unlabelled",
+        "ambiguous"
+      ],
+      "title": "UnassociatedCause",
+      "type": "string"
+    },
+    "UnassociatedEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "cause": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UnassociatedCause"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cause_label_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cause Label Line"
+        },
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        },
+        "interval_line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Interval Line"
+        },
+        "missing_players": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Missing Players"
+        },
+        "missing_types": {
+          "items": {
+            "$ref": "#/$defs/LabelStrokeType"
+          },
+          "title": "Missing Types",
+          "type": "array"
+        },
+        "nearest_target": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NearestTarget"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "other_group_id": {
+          "title": "Other Group Id",
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/$defs/Position"
+        },
+        "target_group_id": {
+          "title": "Target Group Id",
+          "type": "string"
+        },
+        "verdict": {
+          "$ref": "#/$defs/Verdict"
+        }
+      },
+      "required": [
+        "event_id",
+        "target_group_id",
+        "other_group_id",
+        "nearest_target",
+        "position",
+        "interval_line",
+        "verdict",
+        "cause",
+        "cause_label_line",
+        "missing_types",
+        "missing_players"
+      ],
+      "title": "UnassociatedEvent",
+      "type": "object"
+    },
+    "Verdict": {
+      "enum": [
+        "judged",
+        "not_judgeable_coverage",
+        "not_judged_position"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    },
+    "Wrist": {
+      "enum": [
+        "left",
+        "right"
+      ],
+      "title": "Wrist",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "``strokes_eval.json`` 1.0 (see module docstring).",
+  "properties": {
+    "clips": {
+      "items": {
+        "$ref": "#/$defs/ClipEval"
+      },
+      "title": "Clips",
+      "type": "array"
+    },
+    "clips_without_results": {
+      "description": "Manifest clips with no strokes file: listed, never evaluated silently",
+      "items": {
+        "type": "string"
+      },
+      "title": "Clips Without Results",
+      "type": "array"
+    },
+    "created_at": {
+      "description": "The only field ignored by repeatability checks",
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "inputs": {
+      "$ref": "#/$defs/EvalInputs"
+    },
+    "params": {
+      "$ref": "#/$defs/EvalParams"
+    },
+    "producer": {
+      "$ref": "#/$defs/EvalProducer"
+    },
+    "schema": {
+      "default": "tpa.strokes_eval",
+      "pattern": "^tpa\\.strokes_eval$",
+      "title": "Schema",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "1.0",
+      "pattern": "^1\\.0$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "created_at",
+    "producer",
+    "inputs",
+    "params",
+    "clips",
+    "clips_without_results",
+    "warnings"
+  ],
+  "title": "StrokesEvalFile",
+  "type": "object"
+}

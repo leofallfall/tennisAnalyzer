@@ -2,9 +2,9 @@
 
 Status (2026-11-22): **format, versioned reader, invariant checks and canonical writer
 done (PR 1 of the M2.3 preparation, ADR-022). No detector writes this file yet**: the M2.3
-detector starts only after M2.2 and an explicit go. The evaluation extension (connected
-components per radius, annotated intervals, miss causes, `strokes_eval.json`) and the
-reports are PR 2 and PR 3 of the same plan, not started.
+detector starts only after M2.2 and an explicit go. The evaluation (connected components
+per radius, annotated intervals, miss causes, `strokes_eval.json`) is PR 2, see
+docs/M2_3_EVALUATION.md; the reports are PR 3, not started.
 
 Code: `engine/tennis_cv/strokes/artifact.py` (pure library, not used by the pipeline,
 worker, API or UI). JSON Schema: `packages/contracts/schema/strokes_v1.schema.json`.
@@ -128,7 +128,7 @@ stale-input problem.
 - Association with labels, radii, ambiguity, miss causes, the state of each annotated
   frame (`not_sampled_stride`, `repeated_frame`, `no_pose_frame`, with a fixed precedence
   and errors for frames out of domain or an inconsistent `pose.json`): evaluation tool,
-  PR 2, `strokes_eval.json`.
+  PR 2, `strokes_eval.json` (docs/M2_3_EVALUATION.md).
 - TypeScript types in `packages/contracts/src`: M2.6, when the API and UI use the file
   (decision E6). Only the JSON Schema is exported now.
 - Peak detection, grouping, region states and decisions: the M2.3 detector (not started).

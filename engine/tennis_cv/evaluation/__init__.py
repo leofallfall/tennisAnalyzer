@@ -6,6 +6,10 @@ Reads a local dataset of real clips (``MANIFEST.md`` + ``labels.csv``, git-ignor
 
 * :mod:`~tennis_cv.evaluation.matching` compares manual labels with detected events
   (a ``strokes.json`` that may be written by hand: no detector exists yet).
+* :mod:`~tennis_cv.evaluation.evaluate` (M2.3) associates ``strokes.json`` events with
+  the labels by connected components, one radius at a time, gives every missed impact a
+  cause and every unassociated event a verdict, and builds ``strokes_eval.json``
+  (:mod:`~tennis_cv.evaluation.eval_artifact`).
 * :mod:`~tennis_cv.evaluation.visibility` measures the *input* quality: what MediaPipe
   reports around each labelled impact. It does not measure any detector.
 

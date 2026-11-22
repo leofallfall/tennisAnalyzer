@@ -49,7 +49,7 @@
 | `strokes` | interface | Detection, classification, phase segmentation |
 | `racket`, `ball` | interface | Detection/tracking |
 | `comparison` | interface | `CameraView`, compatibility, normalisation |
-| `evaluation` | implemented (offline) | M2.1 dataset formats, label/event matching, input visibility report; used by `scripts/eval_strokes.py` only |
+| `evaluation` | implemented (offline) | M2.1 dataset formats, annotated intervals and their coverage (`annotated.csv`), label/event matching, input visibility report; used by `scripts/eval_strokes.py` only |
 | `signals` | partial (offline, M2.2) | Time base of pose samples (`timebase.py`: source/proxy times, repeated frames, irregular intervals, map checks); keypoint quality levels and local polynomial smoothing on real times within runs (`smoothing.py`); robust torso scale (`scale.py`); apparent 2D speed from the derivative of the same fit (`velocity.py`). No accelerations. Not used by the pipeline |
 | `pipeline.py` | implemented | Milestone 1 pipeline orchestrating the above |
 | `capabilities.py` | implemented | Honest module status, exposed at `/api/system/info` |

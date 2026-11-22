@@ -6,7 +6,8 @@ of the M2.0 design, approved 2026-11-19), with the single-player limit of ADR-01
 
 M2.1 builds no stroke detector and no forehand/backhand classifier. It provides:
 
-1. a labelling method that needs no annotation tool;
+1. a labelling method that needs no annotation tool (a local labelling page was added on
+   2026-11-22, section 4b);
 2. two hand-written files describing a local dataset of real clips (`MANIFEST.md`,
    `labels.csv`);
 3. `scripts/eval_strokes.py`, which checks the dataset, measures the **pose input**
@@ -107,6 +108,70 @@ clip02,455,forehand,B,full,,colpo del compagno
 
 Blank lines and lines starting with `#` are ignored. The same clip, frame and player may
 not appear twice. Errors are reported with file and line; nothing is guessed.
+
+### 4a. `annotated.csv`: annotated intervals (added for M2.3)
+
+Says **which part** of each clip was labelled and **what** was labelled there exhaustively.
+It sits next to `labels.csv`; `check` reads it automatically from there, or from
+`--annotated PATH`. Code: `engine/tennis_cv/evaluation/annotated.py`.
+
+```csv
+clip_id,start_frame,end_frame,labelled_types,players,notes
+img4893,0,1799,forehand;backhand,A,primo minuto: solo dritti e rovesci di A
+conf01,0,5399,all,all_visible,video di conferma annotato per intero
+```
+
+| Column | Values | Meaning |
+| --- | --- | --- |
+| `clip_id` | a manifest `clip_id` | |
+| `start_frame`, `end_frame` | integers ≥ 0, `start ≤ end` | proxy frames (`#N`), **both included** |
+| `labelled_types` | `;`-separated subset of `forehand`, `backhand`, `serve`, `volley`, `other`, or `all` | types labelled exhaustively in the interval. `none` is never a coverage type: non-stroke movements cannot all be labelled |
+| `players` | `all_visible`, or `;`-separated capital letters (`A`, `A;B`) | players labelled exhaustively; `all_visible` = every person visible in the frame |
+| `notes` | text | |
+
+Rules checked by `eval_strokes.py check` (errors with file and line):
+
+* several rows per clip are allowed, but intervals of the same clip may not overlap;
+* unknown clip, `end_frame` past the last proxy frame, `end_frame < start_frame` → error;
+* when a clip has intervals, a label outside all of them → error; a clip without intervals
+  → warning (coverage unknown);
+* a label inside an interval that does not declare its type or player → warning (allowed,
+  but it does not make the interval exhaustive).
+
+**Exhaustive interval** (rule P2 of the M2.3 evaluation proposal, function
+`coverage()` in `annotated.py`): `labelled_types` covers all five stroke types **and**
+`players = all_visible`; `A` alone is enough only if the manifest says
+`other_people = no`. Only exhaustive intervals let M2.3 judge unmatched detector events
+automatically; everything else goes to manual review. `check` prints, per interval,
+`exhaustive` or what is missing. With the 2026-11-19/20 labels (forehands and backhands of
+A only) no interval can be exhaustive.
+
+### 4b. Labelling page (`scripts/labeler/labeler.html`)
+
+A single HTML file with no dependencies and no network access: open it with a double click
+in Chrome or Edge. It replaces reading `#N` in VLC and typing rows by hand.
+
+1. Choose the clip's `overlay.mp4` (or `proxy.mp4`), write the manifest `clip_id`, the proxy
+   fps (from `report.json` / `eval_strokes.py list`) and whether other people are visible.
+   On the overlay, the burned-in `#N` must equal the frame shown by the page; if it does
+   not, the fps is wrong.
+2. Step with `←`/`→` (`Shift` = 10 frames). On the impact frame press `D` forehand, `R`
+   backhand, `S` serve, `V` volley, `O` other, `N` none. `G` switches player A → B → C;
+   `1`/`2`/`3` set the visibility of the next labels; `Canc` deletes the labels on the
+   current frame. `overlay_wrist` and notes are edited in the table.
+3. Choose the coverage (types, players), press `I` on the first frame of the interval and
+   `E` on the last one.
+4. Download `labels.csv` and `annotated.csv` and run `eval_strokes.py check`.
+
+Work is saved in the browser (`localStorage`) after every change and survives a reload;
+existing CSV files can be imported to continue them. Frames use the same rule as the web
+player (seek to the middle of the frame, read with `floor`); the last frame is clamped
+because Chromium reports `currentTime = duration` there. Verified on 2026-11-22 in headless
+Chromium on synthetic H.264 videos with the frame number encoded in the image (30 and
+29.97 fps, 300 frames): 103 steps and jumps each, the decoded frame always equalled the
+page's frame. The page's own checks mirror the Python ones but are only a help;
+`eval_strokes.py check` is the reference. Browsers may not play HEVC originals: use the
+proxy or overlay (H.264).
 
 ## 5. Input visibility report
 

@@ -6,7 +6,7 @@ written by hand. See docs/M2_1_DATASET.md for the formats and the labelling prot
 Usage:
     uv run python scripts/eval_strokes.py init [DIR]
     uv run python scripts/eval_strokes.py list [STORAGE_DIR]
-    uv run python scripts/eval_strokes.py check MANIFEST LABELS
+    uv run python scripts/eval_strokes.py check MANIFEST LABELS [--annotated ANNOTATED.csv]
     uv run python scripts/eval_strokes.py visibility MANIFEST LABELS
         [--window-s 0.3] [--threshold 0.5] [--out REPORT.md] [--json DATA.json]
     uv run python scripts/eval_strokes.py compare MANIFEST LABELS
@@ -24,6 +24,12 @@ import sys
 from pathlib import Path
 
 from tennis_cv.errors import TennisCVError
+from tennis_cv.evaluation.annotated import (
+    ANNOTATED_FILE,
+    check_against_labels,
+    coverage,
+    load_annotated,
+)
 from tennis_cv.evaluation.dataset import (
     LABEL_COLUMNS,
     MANIFEST_COLUMNS,
@@ -179,10 +185,46 @@ def cmd_check(args: argparse.Namespace) -> int:
             f"{detected}/{len(c.poses.frames)} analysed frames, {len(own)} labels, "
             f"view={c.clip.view.value}, hand={c.clip.dominant_hand.value}"
         )
+    annotated: Path | None = args.annotated
+    if annotated is None and (args.labels.parent / ANNOTATED_FILE).is_file():
+        annotated = args.labels.parent / ANNOTATED_FILE
+    n_intervals = 0
+    if annotated is None:
+        warnings.append(f"no {ANNOTATED_FILE} next to the labels: coverage unknown")
+    else:
+        intervals = load_annotated(annotated)
+        clips = {c.clip.clip_id: c.clip for c in data}
+        problems, iv_warnings = check_against_labels(
+            intervals,
+            labels,
+            clips,
+            {c.clip.clip_id: c.frame_count for c in data},
+            file_name=annotated.name,
+            labels_name=args.labels.name,
+        )
+        if problems:
+            raise TennisCVError(
+                "Annotated intervals do not match the clips or the labels",
+                details={"problems": problems},
+            )
+        warnings.extend(iv_warnings)
+        for iv in intervals:
+            cov = coverage(iv, clips[iv.clip_id])
+            missing = [t.value for t in cov.missing_types]
+            if cov.missing_players is not None:
+                missing.append(f"players={cov.missing_players}")
+            state = (
+                "exhaustive" if cov.exhaustive else "NOT exhaustive, missing " + ", ".join(missing)
+            )
+            print(
+                f"{annotated.name}:{iv.line}: {iv.clip_id} frames {iv.start_frame}-"
+                f"{iv.end_frame}: {state}"
+            )
+        n_intervals = len(intervals)
     for w in warnings:
         print(f"WARNING {w}")
     print(assess_split(data).statement)
-    print(f"OK: {len(data)} clips, {len(labels)} labels.")
+    print(f"OK: {len(data)} clips, {len(labels)} labels, {n_intervals} annotated intervals.")
     return 0
 
 
@@ -294,6 +336,13 @@ def main(argv: list[str] | None = None) -> int:
         s.add_argument("manifest", type=Path)
         s.add_argument("labels", type=Path)
         s.set_defaults(func=func)
+        if name == "check":
+            s.add_argument(
+                "--annotated",
+                type=Path,
+                default=None,
+                help=f"annotated intervals (default: {ANNOTATED_FILE} next to LABELS, if any)",
+            )
         if name in ("visibility", "compare"):
             s.add_argument("--out", type=Path, default=None, help="Markdown report file")
             s.add_argument("--json", type=Path, default=None, help="Raw data as JSON")

@@ -1,0 +1,1116 @@
+{
+  "$defs": {
+    "CandidateEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/Classification"
+        },
+        "complementary": {
+          "items": {
+            "$ref": "#/$defs/ComplementarySignal"
+          },
+          "title": "Complementary",
+          "type": "array"
+        },
+        "estimated_contact_s": {
+          "default": null,
+          "description": "Null until the peak-to-impact offset is validated (D4)",
+          "title": "Estimated Contact S",
+          "type": "null"
+        },
+        "evidence": {
+          "$ref": "#/$defs/Evidence"
+        },
+        "grouping": {
+          "$ref": "#/$defs/Grouping"
+        },
+        "id": {
+          "pattern": "^[a-z][A-Za-z0-9_.-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "player": {
+          "$ref": "#/$defs/PlayerCheck"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "regions": {
+          "$ref": "#/$defs/Regions"
+        },
+        "reliability": {
+          "$ref": "#/$defs/EventReliability"
+        },
+        "representative_wrist": {
+          "$ref": "#/$defs/RepresentativeWrist"
+        },
+        "status": {
+          "$ref": "#/$defs/EventStatus"
+        },
+        "time": {
+          "$ref": "#/$defs/EventTime"
+        },
+        "trace": {
+          "items": {
+            "$ref": "#/$defs/TraceStep"
+          },
+          "minItems": 1,
+          "title": "Trace",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "grouping",
+        "evidence",
+        "representative_wrist",
+        "time",
+        "regions",
+        "reliability",
+        "trace"
+      ],
+      "title": "CandidateEvent",
+      "type": "object"
+    },
+    "Classification": {
+      "additionalProperties": false,
+      "description": "Reserved for M2.4 (forehand / backhand).",
+      "properties": {
+        "status": {
+          "const": "not_attempted",
+          "default": "not_attempted",
+          "title": "Status",
+          "type": "string"
+        },
+        "stroke_type": {
+          "const": "unknown",
+          "default": "unknown",
+          "title": "Stroke Type",
+          "type": "string"
+        }
+      },
+      "title": "Classification",
+      "type": "object"
+    },
+    "ComplementarySignal": {
+      "additionalProperties": false,
+      "description": "Reserved for M2.3 complementary signals (from M2.2 #6). Empty in early producers.",
+      "properties": {
+        "provenance": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Provenance",
+          "type": "object"
+        },
+        "signal": {
+          "minLength": 1,
+          "title": "Signal",
+          "type": "string"
+        },
+        "state": {
+          "minLength": 1,
+          "title": "State",
+          "type": "string"
+        },
+        "unit": {
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "signal",
+        "value",
+        "unit",
+        "state"
+      ],
+      "title": "ComplementarySignal",
+      "type": "object"
+    },
+    "EventReliability": {
+      "additionalProperties": false,
+      "properties": {
+        "limited_by": {
+          "items": {
+            "$ref": "#/$defs/RegionName"
+          },
+          "title": "Limited By",
+          "type": "array"
+        },
+        "regions_used": {
+          "items": {
+            "$ref": "#/$defs/RegionName"
+          },
+          "minItems": 1,
+          "title": "Regions Used",
+          "type": "array"
+        },
+        "state": {
+          "$ref": "#/$defs/RegionState"
+        }
+      },
+      "required": [
+        "state",
+        "regions_used"
+      ],
+      "title": "EventReliability",
+      "type": "object"
+    },
+    "EventStatus": {
+      "enum": [
+        "accepted",
+        "uncertain",
+        "rejected"
+      ],
+      "title": "EventStatus",
+      "type": "string"
+    },
+    "EventTime": {
+      "additionalProperties": false,
+      "properties": {
+        "ref_proxy_frame": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ref Proxy Frame"
+        },
+        "ref_t_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ref T S"
+        },
+        "window_proxy_frames": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Window Proxy Frames",
+          "type": "array"
+        },
+        "window_t_s": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Window T S",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ref_proxy_frame",
+        "ref_t_s",
+        "window_proxy_frames",
+        "window_t_s"
+      ],
+      "title": "EventTime",
+      "type": "object"
+    },
+    "Evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "left": {
+          "$ref": "#/$defs/WristEvidence"
+        },
+        "right": {
+          "$ref": "#/$defs/WristEvidence"
+        }
+      },
+      "required": [
+        "left",
+        "right"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "EvidenceState": {
+      "enum": [
+        "peaks",
+        "no_peak"
+      ],
+      "title": "EvidenceState",
+      "type": "string"
+    },
+    "GroupLink": {
+      "additionalProperties": false,
+      "properties": {
+        "dt_s": {
+          "title": "Dt S",
+          "type": "number"
+        },
+        "from": {
+          "pattern": "^[a-z][A-Za-z0-9_.-]{0,63}$",
+          "title": "From",
+          "type": "string"
+        },
+        "to": {
+          "pattern": "^[a-z][A-Za-z0-9_.-]{0,63}$",
+          "title": "To",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to",
+        "dt_s"
+      ],
+      "title": "GroupLink",
+      "type": "object"
+    },
+    "Grouping": {
+      "additionalProperties": false,
+      "properties": {
+        "g_s": {
+          "description": "Grouping window G (a parameter, not validated)",
+          "title": "G S",
+          "type": "number"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/GroupLink"
+          },
+          "title": "Links",
+          "type": "array"
+        },
+        "method": {
+          "const": "chain",
+          "title": "Method",
+          "type": "string"
+        },
+        "peak_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Peak Ids",
+          "type": "array"
+        },
+        "possible_merge": {
+          "title": "Possible Merge",
+          "type": "boolean"
+        },
+        "span_s": {
+          "description": "Last minus first peak time; may exceed G",
+          "title": "Span S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "method",
+        "g_s",
+        "peak_ids",
+        "links",
+        "span_s",
+        "possible_merge"
+      ],
+      "title": "Grouping",
+      "type": "object"
+    },
+    "Inputs": {
+      "additionalProperties": false,
+      "properties": {
+        "player_config": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reserved for the player configuration of M2.2 #6. Null in 1.0 producers; never used for detection in M2.3",
+          "title": "Player Config"
+        },
+        "pose": {
+          "$ref": "#/$defs/PoseInput"
+        },
+        "timemap": {
+          "$ref": "#/$defs/TimemapInput"
+        }
+      },
+      "required": [
+        "pose",
+        "timemap"
+      ],
+      "title": "Inputs",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "MapStatus": {
+      "enum": [
+        "ok",
+        "missing",
+        "inconsistent"
+      ],
+      "title": "MapStatus",
+      "type": "string"
+    },
+    "PeakStatus": {
+      "enum": [
+        "grouped",
+        "discarded"
+      ],
+      "title": "PeakStatus",
+      "type": "string"
+    },
+    "PlayerCheck": {
+      "additionalProperties": false,
+      "description": "Reserved for M2.5 (player verification).",
+      "properties": {
+        "status": {
+          "const": "not_checked",
+          "default": "not_checked",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "title": "PlayerCheck",
+      "type": "object"
+    },
+    "PoseInput": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "description": "Plain file name next to strokes.json, never a path",
+          "pattern": "^(?:[^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000.]|[^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000.][^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]|\\.[^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000.]|[^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000][^/\\\\:\\u0000]+[^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000])$",
+          "title": "File",
+          "type": "string"
+        },
+        "fps": {
+          "exclusiveMinimum": 0,
+          "title": "Fps",
+          "type": "number"
+        },
+        "frame_stride": {
+          "minimum": 1,
+          "title": "Frame Stride",
+          "type": "integer"
+        },
+        "frames": {
+          "description": "Entries in pose.json frames",
+          "minimum": 0,
+          "title": "Frames",
+          "type": "integer"
+        },
+        "sha256": {
+          "description": "SHA-256 of the file bytes",
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "sha256",
+        "fps",
+        "frames",
+        "frame_stride"
+      ],
+      "title": "PoseInput",
+      "type": "object"
+    },
+    "Producer": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": {
+          "minLength": 1,
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "algorithm_version": {
+          "minLength": 1,
+          "title": "Algorithm Version",
+          "type": "string"
+        },
+        "engine_version": {
+          "minLength": 1,
+          "title": "Engine Version",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/ProducerStatus"
+        }
+      },
+      "required": [
+        "algorithm",
+        "algorithm_version",
+        "status",
+        "engine_version"
+      ],
+      "title": "Producer",
+      "type": "object"
+    },
+    "ProducerStatus": {
+      "enum": [
+        "experimental"
+      ],
+      "title": "ProducerStatus",
+      "type": "string"
+    },
+    "Provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "keypoint": {
+          "description": "MediaPipe landmark name",
+          "minLength": 1,
+          "title": "Keypoint",
+          "type": "string"
+        },
+        "landmark_index": {
+          "minimum": 0,
+          "title": "Landmark Index",
+          "type": "integer"
+        },
+        "scale_state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ScaleState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "None when no scale was used"
+        },
+        "signal": {
+          "description": "Name of the signal the peak was found on",
+          "minLength": 1,
+          "title": "Signal",
+          "type": "string"
+        },
+        "smooth_state": {
+          "$ref": "#/$defs/SmoothState"
+        },
+        "velocity_state": {
+          "$ref": "#/$defs/VelocityState"
+        }
+      },
+      "required": [
+        "signal",
+        "keypoint",
+        "landmark_index",
+        "velocity_state",
+        "smooth_state",
+        "scale_state"
+      ],
+      "title": "Provenance",
+      "type": "object"
+    },
+    "QualityWindow": {
+      "additionalProperties": false,
+      "properties": {
+        "good": {
+          "minimum": 0,
+          "title": "Good",
+          "type": "integer"
+        },
+        "half_window_s": {
+          "title": "Half Window S",
+          "type": "number"
+        },
+        "irregular_intervals": {
+          "minimum": 0,
+          "title": "Irregular Intervals",
+          "type": "integer"
+        },
+        "low_but_usable": {
+          "minimum": 0,
+          "title": "Low But Usable",
+          "type": "integer"
+        },
+        "missing": {
+          "minimum": 0,
+          "title": "Missing",
+          "type": "integer"
+        },
+        "unreliable": {
+          "minimum": 0,
+          "title": "Unreliable",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "half_window_s",
+        "good",
+        "low_but_usable",
+        "unreliable",
+        "missing",
+        "irregular_intervals"
+      ],
+      "title": "QualityWindow",
+      "type": "object"
+    },
+    "Region": {
+      "additionalProperties": false,
+      "properties": {
+        "reasons": {
+          "items": {
+            "$ref": "#/$defs/RegionReason"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "samples": {
+          "$ref": "#/$defs/SampleCounts"
+        },
+        "state": {
+          "$ref": "#/$defs/RegionState"
+        }
+      },
+      "required": [
+        "state",
+        "samples"
+      ],
+      "title": "Region",
+      "type": "object"
+    },
+    "RegionName": {
+      "enum": [
+        "torso",
+        "left_wrist",
+        "right_wrist",
+        "legs"
+      ],
+      "title": "RegionName",
+      "type": "string"
+    },
+    "RegionReason": {
+      "enum": [
+        "no_pose",
+        "below_threshold",
+        "out_of_frame",
+        "broken_run",
+        "irregular_interval"
+      ],
+      "title": "RegionReason",
+      "type": "string"
+    },
+    "RegionState": {
+      "enum": [
+        "good",
+        "low_but_usable",
+        "not_observable"
+      ],
+      "title": "RegionState",
+      "type": "string"
+    },
+    "Regions": {
+      "additionalProperties": false,
+      "properties": {
+        "left_wrist": {
+          "$ref": "#/$defs/Region"
+        },
+        "legs": {
+          "$ref": "#/$defs/Region"
+        },
+        "right_wrist": {
+          "$ref": "#/$defs/Region"
+        },
+        "torso": {
+          "$ref": "#/$defs/Region"
+        }
+      },
+      "required": [
+        "torso",
+        "left_wrist",
+        "right_wrist",
+        "legs"
+      ],
+      "title": "Regions",
+      "type": "object"
+    },
+    "RepresentativeWrist": {
+      "additionalProperties": false,
+      "properties": {
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "value": {
+          "$ref": "#/$defs/RepresentativeWristValue"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "RepresentativeWrist",
+      "type": "object"
+    },
+    "RepresentativeWristValue": {
+      "enum": [
+        "left",
+        "right",
+        "undetermined"
+      ],
+      "title": "RepresentativeWristValue",
+      "type": "string"
+    },
+    "Rule": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/RuleKind"
+        }
+      },
+      "required": [
+        "code",
+        "kind",
+        "description"
+      ],
+      "title": "Rule",
+      "type": "object"
+    },
+    "RuleKind": {
+      "enum": [
+        "discard_peak",
+        "reject",
+        "uncertain",
+        "representative_wrist",
+        "check",
+        "decision",
+        "info"
+      ],
+      "title": "RuleKind",
+      "type": "string"
+    },
+    "SampleCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "good": {
+          "minimum": 0,
+          "title": "Good",
+          "type": "integer"
+        },
+        "low_but_usable": {
+          "minimum": 0,
+          "title": "Low But Usable",
+          "type": "integer"
+        },
+        "missing": {
+          "minimum": 0,
+          "title": "Missing",
+          "type": "integer"
+        },
+        "unreliable": {
+          "minimum": 0,
+          "title": "Unreliable",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "good",
+        "low_but_usable",
+        "unreliable",
+        "missing"
+      ],
+      "title": "SampleCounts",
+      "type": "object"
+    },
+    "ScaleState": {
+      "enum": [
+        "ok",
+        "insufficient"
+      ],
+      "title": "ScaleState",
+      "type": "string"
+    },
+    "SmoothState": {
+      "enum": [
+        "smoothed",
+        "edge",
+        "unreliable",
+        "too_short"
+      ],
+      "title": "SmoothState",
+      "type": "string"
+    },
+    "Speed": {
+      "additionalProperties": false,
+      "properties": {
+        "rel_to_clip": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Position relative to the clip (definition in params)",
+          "title": "Rel To Clip"
+        },
+        "unit": {
+          "description": "e.g. torso_lengths_per_s or px_per_s",
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ],
+      "title": "Speed",
+      "type": "object"
+    },
+    "TimeBasis": {
+      "enum": [
+        "source",
+        "proxy"
+      ],
+      "title": "TimeBasis",
+      "type": "string"
+    },
+    "TimemapInput": {
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "anyOf": [
+            {
+              "pattern": "^(?:[^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000.]|[^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000.][^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000]|\\.[^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000.]|[^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000][^/\\\\:\\u0000]+[^/\\\\:\\u0000\\u0009-\\u000d\\u001c-\\u0020\\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000])$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Plain file name, never a path",
+          "title": "File"
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sha256"
+        },
+        "status": {
+          "$ref": "#/$defs/MapStatus",
+          "description": "As reported by signals.timebase.build_timebase"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "TimemapInput",
+      "type": "object"
+    },
+    "TraceOutcome": {
+      "enum": [
+        "pass",
+        "fail",
+        "not_applicable",
+        "accepted",
+        "uncertain",
+        "rejected"
+      ],
+      "title": "TraceOutcome",
+      "type": "string"
+    },
+    "TraceStep": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Inputs",
+          "type": "object"
+        },
+        "outcome": {
+          "$ref": "#/$defs/TraceOutcome"
+        },
+        "param": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Dotted path into params, e.g. grouping.g_s",
+          "title": "Param"
+        },
+        "rule": {
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Rule",
+          "type": "string"
+        },
+        "step": {
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        },
+        "subject": {
+          "description": "Peak or event id the rule looked at",
+          "pattern": "^[a-z][A-Za-z0-9_.-]{0,63}$",
+          "title": "Subject",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "rule",
+        "subject",
+        "param",
+        "outcome"
+      ],
+      "title": "TraceStep",
+      "type": "object"
+    },
+    "VelocityState": {
+      "enum": [
+        "valid",
+        "edge",
+        "unreliable",
+        "too_short"
+      ],
+      "title": "VelocityState",
+      "type": "string"
+    },
+    "Wrist": {
+      "enum": [
+        "left",
+        "right"
+      ],
+      "title": "Wrist",
+      "type": "string"
+    },
+    "WristEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "peak_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Peak Ids",
+          "type": "array"
+        },
+        "state": {
+          "$ref": "#/$defs/EvidenceState"
+        }
+      },
+      "required": [
+        "state",
+        "peak_ids"
+      ],
+      "title": "WristEvidence",
+      "type": "object"
+    },
+    "WristPeak": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Id"
+        },
+        "id": {
+          "pattern": "^[a-z][A-Za-z0-9_.-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/Provenance"
+        },
+        "proxy_frame": {
+          "minimum": 0,
+          "title": "Proxy Frame",
+          "type": "integer"
+        },
+        "quality_window": {
+          "$ref": "#/$defs/QualityWindow"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "speed": {
+          "$ref": "#/$defs/Speed"
+        },
+        "status": {
+          "$ref": "#/$defs/PeakStatus"
+        },
+        "t_s": {
+          "description": "Time on the file's time_basis",
+          "title": "T S",
+          "type": "number"
+        },
+        "wrist": {
+          "$ref": "#/$defs/Wrist"
+        }
+      },
+      "required": [
+        "id",
+        "wrist",
+        "proxy_frame",
+        "t_s",
+        "speed",
+        "provenance",
+        "quality_window",
+        "status"
+      ],
+      "title": "WristPeak",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "``strokes.json`` 1.x (see module docstring and docs/M2_3_EVENTS.md).",
+  "properties": {
+    "created_at": {
+      "description": "The only field ignored by repeatability checks",
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/CandidateEvent"
+      },
+      "title": "Events",
+      "type": "array"
+    },
+    "inputs": {
+      "$ref": "#/$defs/Inputs"
+    },
+    "params": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "description": "Every parameter used, M2.2 signal parameters included (as written)",
+      "title": "Params",
+      "type": "object"
+    },
+    "params_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Params Sha256",
+      "type": "string"
+    },
+    "producer": {
+      "$ref": "#/$defs/Producer"
+    },
+    "rules": {
+      "items": {
+        "$ref": "#/$defs/Rule"
+      },
+      "title": "Rules",
+      "type": "array"
+    },
+    "schema": {
+      "const": "tpa.strokes",
+      "title": "Schema",
+      "type": "string"
+    },
+    "schema_version": {
+      "pattern": "^1\\.[0-9]+$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "time_basis": {
+      "$ref": "#/$defs/TimeBasis"
+    },
+    "wrist_peaks": {
+      "items": {
+        "$ref": "#/$defs/WristPeak"
+      },
+      "title": "Wrist Peaks",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "schema_version",
+    "created_at",
+    "producer",
+    "inputs",
+    "time_basis",
+    "params",
+    "params_sha256",
+    "rules",
+    "wrist_peaks",
+    "events"
+  ],
+  "title": "StrokesFile",
+  "type": "object"
+}

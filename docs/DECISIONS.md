@@ -362,3 +362,34 @@ decision trace) and the evaluation tool (labelled intervals, connected-component
 rejected events, independent radii, false-candidate review sheet) must be specified. The
 results are a development check on one player, not a validation. M2.3 starts only after
 M2.2 and an explicit go.
+
+### ADR-022 `strokes.json` 1.0 and the M2.3 evaluation plan (2026-11-22)
+**Context:** ADR-021 requires `strokes.json` (wrist peaks, events, regions, decision trace)
+and the evaluation extension to be specified before M2.3 is implemented. Both were
+prepared in parallel with M2.2 #5/#6, without touching `signals/`.
+**Decision (approved by the developer, decisions E1–E7 and precisions P1–P7):**
+- `strokes.json` 1.0 (`engine/tennis_cv/strokes/artifact.py`, docs/M2_3_EVENTS.md): wrist
+  peaks as evidence with provenance, candidate events as the only counted objects, chain
+  grouping within G, representative wrist that may stay undetermined, four independent
+  regions, reliability never above the worst region used, reserved fields for M2.4/M2.5
+  and M2.2 #6, decision trace, rule catalogue, input and parameter hashes, canonical
+  writing; eight invariants checked on read and before writing.
+- Compatibility is backward only: readers accept older minors and refuse newer minors or
+  other majors explicitly; unknown fields are always rejected.
+- E1: the association with labels lives in a separate `strokes_eval.json`, which keeps every
+  event–label edge within each radius with its distance (P1). E2: annotated intervals in
+  `annotated.csv`. E3: new `evaluate` command, `compare` unchanged for M2.1. E4: miss causes
+  add `peak_discarded` and `event_outside_radius` (the latter only with free events, P6).
+  E5: discarded peaks are recorded with reasons. E6: JSON Schema now, TypeScript types in
+  M2.6. E7: `TimeInterval` docstring fixed (D10).
+- Evaluation rules for PR 2/3: automatic judgement of unassociated events only in
+  exhaustively annotated intervals (P2); label frames converted with `build_timebase`,
+  exact source or proxy times, no interpolation, fixed precedence of frame states and
+  explicit errors for out-of-domain frames or inconsistent `pose.json` (P3); radius check
+  with the real maximum event span W and `not_applicable` below two labels (P4);
+  nearest-rank percentiles, `k = ceil(p·n/100)` (P7).
+**Alternatives:** association inside `strokes.json` (the detector output would change with
+the labels); forward-compatible readers that ignore unknown fields (silent loss); one
+interval per clip in the manifest.
+**Consequences:** the M2.1 `compare` command reads only the minimal M2.1 event format, not
+1.0; PR 2 adds `evaluate`, which reads both. The detector itself is still not started.

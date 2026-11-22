@@ -46,7 +46,7 @@
 | `pose` | experimental | `PoseEstimator` ABC, MediaPipe Pose Landmarker (VIDEO mode), overlay |
 | `biomechanics` | experimental | Metric catalogue, `Measurement`, evidence layers, 2D projected angles |
 | `detection` | interface | Scene/camera change, player detection |
-| `strokes` | interface | Detection, classification, phase segmentation |
+| `strokes` | interface + format | Detection, classification, phase segmentation (interfaces only); `artifact.py`: `strokes.json` 1.0 models, versioned reader, invariants, canonical writer (docs/M2_3_EVENTS.md). No detector |
 | `racket`, `ball` | interface | Detection/tracking |
 | `comparison` | interface | `CameraView`, compatibility, normalisation |
 | `evaluation` | implemented (offline) | M2.1 dataset formats, annotated intervals and their coverage (`annotated.csv`), label/event matching, input visibility report; used by `scripts/eval_strokes.py` only |

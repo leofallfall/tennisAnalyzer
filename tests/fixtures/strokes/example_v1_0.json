@@ -1,0 +1,737 @@
+{
+  "created_at": "2026-11-22T12:00:00Z",
+  "events": [
+    {
+      "classification": {
+        "status": "not_attempted",
+        "stroke_type": "unknown"
+      },
+      "complementary": [],
+      "estimated_contact_s": null,
+      "evidence": {
+        "left": {
+          "peak_ids": [
+            "p0001"
+          ],
+          "state": "peaks"
+        },
+        "right": {
+          "peak_ids": [
+            "p0002"
+          ],
+          "state": "peaks"
+        }
+      },
+      "grouping": {
+        "g_s": 0.25,
+        "links": [
+          {
+            "dt_s": 0.0667,
+            "from": "p0001",
+            "to": "p0002"
+          }
+        ],
+        "method": "chain",
+        "peak_ids": [
+          "p0001",
+          "p0002"
+        ],
+        "possible_merge": false,
+        "span_s": 0.0667
+      },
+      "id": "e0001",
+      "player": {
+        "status": "not_checked"
+      },
+      "reasons": [],
+      "regions": {
+        "left_wrist": {
+          "reasons": [
+            "below_threshold"
+          ],
+          "samples": {
+            "good": 4,
+            "low_but_usable": 7,
+            "missing": 0,
+            "unreliable": 2
+          },
+          "state": "low_but_usable"
+        },
+        "legs": {
+          "reasons": [
+            "out_of_frame"
+          ],
+          "samples": {
+            "good": 0,
+            "low_but_usable": 0,
+            "missing": 8,
+            "unreliable": 5
+          },
+          "state": "not_observable"
+        },
+        "right_wrist": {
+          "reasons": [],
+          "samples": {
+            "good": 13,
+            "low_but_usable": 0,
+            "missing": 0,
+            "unreliable": 0
+          },
+          "state": "good"
+        },
+        "torso": {
+          "reasons": [],
+          "samples": {
+            "good": 13,
+            "low_but_usable": 0,
+            "missing": 0,
+            "unreliable": 0
+          },
+          "state": "good"
+        }
+      },
+      "reliability": {
+        "limited_by": [
+          "left_wrist"
+        ],
+        "regions_used": [
+          "torso",
+          "left_wrist",
+          "right_wrist"
+        ],
+        "state": "low_but_usable"
+      },
+      "representative_wrist": {
+        "reasons": [
+          "only_wrist_good_in_window"
+        ],
+        "value": "right"
+      },
+      "status": "accepted",
+      "time": {
+        "ref_proxy_frame": 581,
+        "ref_t_s": 19.3701,
+        "window_proxy_frames": [
+          579,
+          581
+        ],
+        "window_t_s": [
+          19.3034,
+          19.3701
+        ]
+      },
+      "trace": [
+        {
+          "inputs": {
+            "rel_to_clip": 0.71
+          },
+          "outcome": "pass",
+          "param": "peaks.min_rel",
+          "rule": "peak_min_rel",
+          "step": 1,
+          "subject": "p0001"
+        },
+        {
+          "inputs": {
+            "rel_to_clip": 0.94
+          },
+          "outcome": "pass",
+          "param": "peaks.min_rel",
+          "rule": "peak_min_rel",
+          "step": 2,
+          "subject": "p0002"
+        },
+        {
+          "inputs": {
+            "dt_s": 0.0667
+          },
+          "outcome": "pass",
+          "param": "grouping.g_s",
+          "rule": "chain_grouping",
+          "step": 3,
+          "subject": "e0001"
+        },
+        {
+          "inputs": {
+            "span_s": 0.0667
+          },
+          "outcome": "pass",
+          "param": "grouping.max_event_span_s",
+          "rule": "max_event_span",
+          "step": 4,
+          "subject": "e0001"
+        },
+        {
+          "inputs": {},
+          "outcome": "accepted",
+          "param": null,
+          "rule": "decision",
+          "step": 5,
+          "subject": "e0001"
+        }
+      ]
+    },
+    {
+      "classification": {
+        "status": "not_attempted",
+        "stroke_type": "unknown"
+      },
+      "complementary": [],
+      "estimated_contact_s": null,
+      "evidence": {
+        "left": {
+          "peak_ids": [
+            "p0004"
+          ],
+          "state": "peaks"
+        },
+        "right": {
+          "peak_ids": [
+            "p0005"
+          ],
+          "state": "peaks"
+        }
+      },
+      "grouping": {
+        "g_s": 0.25,
+        "links": [
+          {
+            "dt_s": 0.1667,
+            "from": "p0004",
+            "to": "p0005"
+          }
+        ],
+        "method": "chain",
+        "peak_ids": [
+          "p0004",
+          "p0005"
+        ],
+        "possible_merge": false,
+        "span_s": 0.1667
+      },
+      "id": "e0002",
+      "player": {
+        "status": "not_checked"
+      },
+      "reasons": [
+        "both_wrists_low_quality"
+      ],
+      "regions": {
+        "left_wrist": {
+          "reasons": [
+            "below_threshold"
+          ],
+          "samples": {
+            "good": 4,
+            "low_but_usable": 7,
+            "missing": 0,
+            "unreliable": 2
+          },
+          "state": "low_but_usable"
+        },
+        "legs": {
+          "reasons": [],
+          "samples": {
+            "good": 13,
+            "low_but_usable": 0,
+            "missing": 0,
+            "unreliable": 0
+          },
+          "state": "good"
+        },
+        "right_wrist": {
+          "reasons": [
+            "below_threshold"
+          ],
+          "samples": {
+            "good": 4,
+            "low_but_usable": 7,
+            "missing": 0,
+            "unreliable": 2
+          },
+          "state": "low_but_usable"
+        },
+        "torso": {
+          "reasons": [],
+          "samples": {
+            "good": 13,
+            "low_but_usable": 0,
+            "missing": 0,
+            "unreliable": 0
+          },
+          "state": "good"
+        }
+      },
+      "reliability": {
+        "limited_by": [
+          "left_wrist",
+          "right_wrist"
+        ],
+        "regions_used": [
+          "torso",
+          "left_wrist",
+          "right_wrist"
+        ],
+        "state": "low_but_usable"
+      },
+      "representative_wrist": {
+        "reasons": [
+          "both_wrists_low_quality"
+        ],
+        "value": "undetermined"
+      },
+      "status": "uncertain",
+      "time": {
+        "ref_proxy_frame": null,
+        "ref_t_s": null,
+        "window_proxy_frames": [
+          1160,
+          1165
+        ],
+        "window_t_s": [
+          38.6672,
+          38.8339
+        ]
+      },
+      "trace": [
+        {
+          "inputs": {
+            "dt_s": 0.1667
+          },
+          "outcome": "pass",
+          "param": "grouping.g_s",
+          "rule": "chain_grouping",
+          "step": 1,
+          "subject": "e0002"
+        },
+        {
+          "inputs": {
+            "good_left": 0,
+            "good_right": 0
+          },
+          "outcome": "fail",
+          "param": null,
+          "rule": "both_wrists_low_quality",
+          "step": 2,
+          "subject": "e0002"
+        },
+        {
+          "inputs": {},
+          "outcome": "uncertain",
+          "param": null,
+          "rule": "decision",
+          "step": 3,
+          "subject": "e0002"
+        }
+      ]
+    },
+    {
+      "classification": {
+        "status": "not_attempted",
+        "stroke_type": "unknown"
+      },
+      "complementary": [],
+      "estimated_contact_s": null,
+      "evidence": {
+        "left": {
+          "peak_ids": [],
+          "state": "no_peak"
+        },
+        "right": {
+          "peak_ids": [
+            "p0006"
+          ],
+          "state": "peaks"
+        }
+      },
+      "grouping": {
+        "g_s": 0.25,
+        "links": [],
+        "method": "chain",
+        "peak_ids": [
+          "p0006"
+        ],
+        "possible_merge": false,
+        "span_s": 0.0
+      },
+      "id": "e0003",
+      "player": {
+        "status": "not_checked"
+      },
+      "reasons": [
+        "peak_at_clip_edge"
+      ],
+      "regions": {
+        "left_wrist": {
+          "reasons": [
+            "out_of_frame"
+          ],
+          "samples": {
+            "good": 0,
+            "low_but_usable": 0,
+            "missing": 8,
+            "unreliable": 5
+          },
+          "state": "not_observable"
+        },
+        "legs": {
+          "reasons": [
+            "out_of_frame"
+          ],
+          "samples": {
+            "good": 0,
+            "low_but_usable": 0,
+            "missing": 8,
+            "unreliable": 5
+          },
+          "state": "not_observable"
+        },
+        "right_wrist": {
+          "reasons": [
+            "below_threshold"
+          ],
+          "samples": {
+            "good": 4,
+            "low_but_usable": 7,
+            "missing": 0,
+            "unreliable": 2
+          },
+          "state": "low_but_usable"
+        },
+        "torso": {
+          "reasons": [],
+          "samples": {
+            "good": 13,
+            "low_but_usable": 0,
+            "missing": 0,
+            "unreliable": 0
+          },
+          "state": "good"
+        }
+      },
+      "reliability": {
+        "limited_by": [
+          "right_wrist"
+        ],
+        "regions_used": [
+          "torso",
+          "right_wrist"
+        ],
+        "state": "low_but_usable"
+      },
+      "representative_wrist": {
+        "reasons": [],
+        "value": "right"
+      },
+      "status": "rejected",
+      "time": {
+        "ref_proxy_frame": 1802,
+        "ref_t_s": 60.0667,
+        "window_proxy_frames": [
+          1802,
+          1802
+        ],
+        "window_t_s": [
+          60.0667,
+          60.0667
+        ]
+      },
+      "trace": [
+        {
+          "inputs": {
+            "frames_to_end": 2
+          },
+          "outcome": "fail",
+          "param": "peaks.edge_frames",
+          "rule": "peak_at_clip_edge",
+          "step": 1,
+          "subject": "p0006"
+        },
+        {
+          "inputs": {},
+          "outcome": "rejected",
+          "param": null,
+          "rule": "decision",
+          "step": 2,
+          "subject": "e0003"
+        }
+      ]
+    }
+  ],
+  "inputs": {
+    "player_config": null,
+    "pose": {
+      "file": "pose.json",
+      "fps": 30.0,
+      "frame_stride": 1,
+      "frames": 1805,
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    "timemap": {
+      "file": "timemap.json",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "status": "ok"
+    }
+  },
+  "params": {
+    "grouping": {
+      "g_s": 0.25,
+      "max_event_span_s": 0.6,
+      "method": "chain"
+    },
+    "peaks": {
+      "min_rel": 0.6,
+      "record_floor_rel": 0.3
+    },
+    "regions": {
+      "half_window_s": 0.2
+    },
+    "signals": {
+      "scale": {},
+      "smoothing": {
+        "note": "hand-written example: real producers copy the M2.2 dataclasses"
+      },
+      "timebase": {
+        "max_interval_ratio": 1.5,
+        "min_interval_ratio": 0.5
+      },
+      "velocity": {}
+    }
+  },
+  "params_sha256": "2fec4e4a69d9a5c2e18c657c536a8c3d078643b41ed9af2b76498722344caa69",
+  "producer": {
+    "algorithm": "hand_written_example",
+    "algorithm_version": "0.0.0",
+    "engine_version": "0.1.0",
+    "status": "experimental"
+  },
+  "rules": [
+    {
+      "code": "both_wrists_low_quality",
+      "description": "No wrist with good samples in the window",
+      "kind": "uncertain"
+    },
+    {
+      "code": "chain_grouping",
+      "description": "Consecutive peaks at most G apart are chained into one event",
+      "kind": "check"
+    },
+    {
+      "code": "decision",
+      "description": "Final status of the event, from the steps before it",
+      "kind": "decision"
+    },
+    {
+      "code": "max_event_span",
+      "description": "Event span within grouping.max_event_span_s (else possible merge)",
+      "kind": "check"
+    },
+    {
+      "code": "only_wrist_good_in_window",
+      "description": "Only one wrist has good samples around its peak",
+      "kind": "representative_wrist"
+    },
+    {
+      "code": "peak_at_clip_edge",
+      "description": "Peak too close to the end of the clip",
+      "kind": "reject"
+    },
+    {
+      "code": "peak_below_min_rel",
+      "description": "Peak below the clip-relative threshold",
+      "kind": "discard_peak"
+    },
+    {
+      "code": "peak_min_rel",
+      "description": "Peak at or above the clip-relative threshold peaks.min_rel",
+      "kind": "check"
+    }
+  ],
+  "schema": "tpa.strokes",
+  "schema_version": "1.0",
+  "time_basis": "source",
+  "wrist_peaks": [
+    {
+      "event_id": "e0001",
+      "id": "p0001",
+      "provenance": {
+        "keypoint": "left_wrist",
+        "landmark_index": 15,
+        "scale_state": "ok",
+        "signal": "wrist_speed_2d_apparent",
+        "smooth_state": "smoothed",
+        "velocity_state": "valid"
+      },
+      "proxy_frame": 579,
+      "quality_window": {
+        "good": 4,
+        "half_window_s": 0.2,
+        "irregular_intervals": 0,
+        "low_but_usable": 7,
+        "missing": 0,
+        "unreliable": 2
+      },
+      "reasons": [],
+      "speed": {
+        "rel_to_clip": 0.71,
+        "unit": "torso_lengths_per_s",
+        "value": 6.12
+      },
+      "status": "grouped",
+      "t_s": 19.3034,
+      "wrist": "left"
+    },
+    {
+      "event_id": "e0001",
+      "id": "p0002",
+      "provenance": {
+        "keypoint": "right_wrist",
+        "landmark_index": 16,
+        "scale_state": "ok",
+        "signal": "wrist_speed_2d_apparent",
+        "smooth_state": "smoothed",
+        "velocity_state": "valid"
+      },
+      "proxy_frame": 581,
+      "quality_window": {
+        "good": 12,
+        "half_window_s": 0.2,
+        "irregular_intervals": 0,
+        "low_but_usable": 1,
+        "missing": 0,
+        "unreliable": 0
+      },
+      "reasons": [],
+      "speed": {
+        "rel_to_clip": 0.94,
+        "unit": "torso_lengths_per_s",
+        "value": 9.81
+      },
+      "status": "grouped",
+      "t_s": 19.3701,
+      "wrist": "right"
+    },
+    {
+      "event_id": null,
+      "id": "p0003",
+      "provenance": {
+        "keypoint": "right_wrist",
+        "landmark_index": 16,
+        "scale_state": "ok",
+        "signal": "wrist_speed_2d_apparent",
+        "smooth_state": "smoothed",
+        "velocity_state": "valid"
+      },
+      "proxy_frame": 640,
+      "quality_window": {
+        "good": 12,
+        "half_window_s": 0.2,
+        "irregular_intervals": 0,
+        "low_but_usable": 1,
+        "missing": 0,
+        "unreliable": 0
+      },
+      "reasons": [
+        "peak_below_min_rel"
+      ],
+      "speed": {
+        "rel_to_clip": 0.33,
+        "unit": "torso_lengths_per_s",
+        "value": 2.4
+      },
+      "status": "discarded",
+      "t_s": 21.3367,
+      "wrist": "right"
+    },
+    {
+      "event_id": "e0002",
+      "id": "p0004",
+      "provenance": {
+        "keypoint": "left_wrist",
+        "landmark_index": 15,
+        "scale_state": "ok",
+        "signal": "wrist_speed_2d_apparent",
+        "smooth_state": "smoothed",
+        "velocity_state": "valid"
+      },
+      "proxy_frame": 1160,
+      "quality_window": {
+        "good": 0,
+        "half_window_s": 0.2,
+        "irregular_intervals": 0,
+        "low_but_usable": 6,
+        "missing": 0,
+        "unreliable": 7
+      },
+      "reasons": [],
+      "speed": {
+        "rel_to_clip": 0.62,
+        "unit": "torso_lengths_per_s",
+        "value": 5.02
+      },
+      "status": "grouped",
+      "t_s": 38.6672,
+      "wrist": "left"
+    },
+    {
+      "event_id": "e0002",
+      "id": "p0005",
+      "provenance": {
+        "keypoint": "right_wrist",
+        "landmark_index": 16,
+        "scale_state": "ok",
+        "signal": "wrist_speed_2d_apparent",
+        "smooth_state": "smoothed",
+        "velocity_state": "valid"
+      },
+      "proxy_frame": 1165,
+      "quality_window": {
+        "good": 0,
+        "half_window_s": 0.2,
+        "irregular_intervals": 0,
+        "low_but_usable": 5,
+        "missing": 0,
+        "unreliable": 8
+      },
+      "reasons": [],
+      "speed": {
+        "rel_to_clip": 0.61,
+        "unit": "torso_lengths_per_s",
+        "value": 4.95
+      },
+      "status": "grouped",
+      "t_s": 38.8339,
+      "wrist": "right"
+    },
+    {
+      "event_id": "e0003",
+      "id": "p0006",
+      "provenance": {
+        "keypoint": "right_wrist",
+        "landmark_index": 16,
+        "scale_state": "ok",
+        "signal": "wrist_speed_2d_apparent",
+        "smooth_state": "smoothed",
+        "velocity_state": "valid"
+      },
+      "proxy_frame": 1802,
+      "quality_window": {
+        "good": 2,
+        "half_window_s": 0.2,
+        "irregular_intervals": 0,
+        "low_but_usable": 0,
+        "missing": 8,
+        "unreliable": 3
+      },
+      "reasons": [],
+      "speed": {
+        "rel_to_clip": 0.8,
+        "unit": "torso_lengths_per_s",
+        "value": 7.3
+      },
+      "status": "grouped",
+      "t_s": 60.0667,
+      "wrist": "right"
+    }
+  ]
+}

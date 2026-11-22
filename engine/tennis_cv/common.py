@@ -30,7 +30,11 @@ class StrictModel(BaseModel):
 
 
 class TimeInterval(StrictModel):
-    """Closed interval in seconds on the *source video* timeline."""
+    """Closed interval in seconds.
+
+    Engine times are on the CFR proxy timeline (``frame / fps``) unless the artifact that
+    holds them declares another basis (e.g. ``time_basis`` in ``strokes.json``).
+    """
 
     start_s: float = Field(ge=0)
     end_s: float = Field(ge=0)

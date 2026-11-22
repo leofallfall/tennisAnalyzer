@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import re
 from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
@@ -507,3 +508,94 @@ def test_catalogue_missing_a_used_rule_is_rejected(raw: Doc, code: str) -> None:
 def test_duplicate_rule_code_is_still_rejected(raw: Doc) -> None:
     raw["rules"].append(dict(raw["rules"][0]))
     assert any("duplicate rule code" in p for p in _violations(raw))
+
+
+# ----------------------------------------------------------------- exported JSON Schema = FileName
+
+SCHEMA_FILE = (
+    Path(__file__).resolve().parents[2]
+    / "packages"
+    / "contracts"
+    / "schema"
+    / "strokes_v1.schema.json"
+)
+
+SCHEMA_BAD_NAMES = [
+    "../pose.json",
+    "/tmp/pose.json",
+    "C:\\pose.json",
+    "pose.json:stream",
+    ".",
+    "..",
+    "",
+    " pose.json",  # leading space
+    "pose.json ",  # trailing space
+    "pose\x00.json",  # NUL
+]
+ORDINARY_NAMES = ["pose.json", "timemap.json", "pose_v2.json", "pose-1.v2.json"]
+
+
+def _file_schema(field: str) -> Doc:
+    """The exported JSON Schema of ``inputs.<field>.file`` (string branch)."""
+    defs = json.loads(SCHEMA_FILE.read_text(encoding="utf-8"))["$defs"]
+    prop: Doc = defs["PoseInput" if field == "pose" else "TimemapInput"]["properties"]["file"]
+    if "anyOf" in prop:  # timemap.file is nullable
+        branches = prop["anyOf"]
+        assert {"type": "null"} in branches
+        prop = next(b for b in branches if b.get("type") == "string")
+    return prop
+
+
+def _json_schema_accepts(schema: Doc, value: str) -> bool:
+    """JSON Schema semantics of the keywords used by the string branch.
+
+    ``pattern`` is an ECMA-262 regex searched anywhere in the value; without the ``m``
+    flag ``$`` matches only at the end of input, i.e. Python's ``\\Z`` (Python's ``$``
+    would also match before a final newline). Any other keyword fails the test, so a new
+    keyword cannot be silently ignored here.
+    """
+    assert set(schema) <= {"type", "pattern", "description", "title"}, schema
+    assert schema["type"] == "string"
+    pattern: str = schema["pattern"]
+    assert pattern.endswith("$")
+    return re.search(pattern[:-1] + r"\Z", value) is not None
+
+
+@pytest.mark.parametrize("field", ["pose", "timemap"])
+@pytest.mark.parametrize("name", SCHEMA_BAD_NAMES)
+def test_exported_schema_rejects_bad_file_names(field: str, name: str) -> None:
+    assert not _json_schema_accepts(_file_schema(field), name)
+
+
+@pytest.mark.parametrize("field", ["pose", "timemap"])
+@pytest.mark.parametrize("name", ORDINARY_NAMES)
+def test_exported_schema_accepts_ordinary_file_names(field: str, name: str) -> None:
+    assert _json_schema_accepts(_file_schema(field), name)
+
+
+@pytest.mark.parametrize("field", ["pose", "timemap"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        *SCHEMA_BAD_NAMES,
+        *ORDINARY_NAMES,
+        *BAD_NAMES,
+        "a",
+        ".x",
+        "x.",
+        "...",
+        "..x",
+        "a b",
+        "\tpose.json",
+        "pose.json\n",
+        "pose.json\u00a0",
+    ],
+)
+def test_exported_schema_and_pydantic_agree(raw: Doc, field: str, name: str) -> None:
+    raw["inputs"][field]["file"] = name
+    try:
+        parse_strokes(_text(raw))
+        pydantic_ok = True
+    except StrokesFormatError:
+        pydantic_ok = False
+    assert _json_schema_accepts(_file_schema(field), name) is pydantic_ok

@@ -192,9 +192,15 @@ DECISION_RULE = "decision"
 """Rule name of the last trace step of every event (invariant 8)."""
 
 
-_FILE_NAME = r"^[^/\\:\x00]+$"
-"""Plain file name for the JSON Schema: no separator (``/`` or ``\\``), no drive or stream
-colon, no NUL. ``.`` and ``..`` are refused by :func:`_plain_file_name`."""
+_ANY = r"[^/\\:\x00]"  # any allowed character
+_EDGE = r"[^/\\:\x00\s]"  # allowed at the start / end: no whitespace
+_EDGE_NO_DOT = r"[^/\\:\x00\s.]"
+_FILE_NAME = rf"^(?:{_EDGE_NO_DOT}|{_EDGE_NO_DOT}{_EDGE}|\.{_EDGE_NO_DOT}|{_EDGE}{_ANY}+{_EDGE})$"
+"""The whole :func:`_plain_file_name` contract as one regular expression, exported in the
+JSON Schema so that external validators accept exactly the same names: no ``/``, ``\\``,
+``:`` or NUL anywhere; no whitespace at either end; not empty, ``.`` or ``..`` (length 1:
+not a dot; length 2: not two dots; length 3+: free in the middle). No look-ahead, so the
+pattern behaves the same in Python, Rust (Pydantic core) and ECMA-262 (JSON Schema)."""
 
 
 def _plain_file_name(name: str) -> str:

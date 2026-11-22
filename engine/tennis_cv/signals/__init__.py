@@ -6,10 +6,26 @@ Interventions 2-3: :mod:`~tennis_cv.signals.smoothing`, keypoint quality (good /
 usable / unreliable) and local polynomial smoothing on real times within runs.
 Intervention 4: :mod:`~tennis_cv.signals.scale`, robust torso length (2D scale).
 Intervention 5: :mod:`~tennis_cv.signals.velocity`, apparent 2D speed from the derivative
-of the same local fit. Accelerations and other signals are not implemented.
+of the same local fit.
+Intervention 6: :mod:`~tennis_cv.signals.body`, shoulder / hip lines, widths, distance
+between the hands, wrist position relative to the hips, and the player configuration;
+:func:`body_signals` returns every signal with its state. Accelerations are not
+implemented; peak finding belongs to M2.3.
 See docs/M2_2_SIGNALS.md.
 """
 
+from tennis_cv.signals.body import (
+    BODY_KEYPOINTS,
+    BodySignal,
+    BodySignals,
+    PlayerConfig,
+    SignalState,
+    body_signals,
+    combine_states,
+    distance_px,
+    line_angle_deg,
+    signals_from_positions,
+)
 from tennis_cv.signals.scale import (
     ScaleParams,
     ScaleState,
@@ -49,13 +65,18 @@ from tennis_cv.signals.velocity import (
 )
 
 __all__ = [
+    "BODY_KEYPOINTS",
+    "BodySignal",
+    "BodySignals",
     "IntervalStatus",
     "KeypointQuality",
     "KeypointVelocity",
     "MapStatus",
+    "PlayerConfig",
     "RawKeypointSignal",
     "ScaleParams",
     "ScaleState",
+    "SignalState",
     "SmoothState",
     "SmoothedKeypoint",
     "SmoothedSignal",
@@ -65,13 +86,18 @@ __all__ = [
     "TimeBasis",
     "TorsoScale",
     "VelocityState",
+    "body_signals",
     "build_timebase",
     "check_timemap",
     "classify_intervals",
     "classify_quality",
+    "combine_states",
+    "distance_px",
     "extract_keypoint",
     "find_runs",
     "keypoint_velocity",
+    "line_angle_deg",
+    "signals_from_positions",
     "smooth_keypoint",
     "smooth_series",
     "stabilise",

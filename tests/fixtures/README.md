@@ -26,3 +26,10 @@ impact), created with `uv run python scripts/eval_strokes.py init`. Clips are pr
 through the app; the manifest points at their output folders under `storage/`. Use only
 clips you own or have permission to use, and never commit footage, pose files or reports
 of real people, nor copyrighted broadcast footage.
+
+## Hand-written `strokes.json` example (committed)
+
+`tests/fixtures/strokes/example_v1_0.json` is a synthetic `strokes.json` 1.0 written by
+hand (producer `hand_written_example`): invented values, no person, no detector output.
+It exercises the format, the eight invariants and the canonical writer (it must stay
+byte-identical to `dump_strokes` of itself). See `docs/M2_3_EVENTS.md`.

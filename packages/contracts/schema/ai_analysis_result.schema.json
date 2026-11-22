@@ -537,7 +537,7 @@
     },
     "TimeInterval": {
       "additionalProperties": false,
-      "description": "Closed interval in seconds on the *source video* timeline.",
+      "description": "Closed interval in seconds.\n\nEngine times are on the CFR proxy timeline (``frame / fps``) unless the artifact that\nholds them declares another basis (e.g. ``time_basis`` in ``strokes.json``).",
       "properties": {
         "end_s": {
           "minimum": 0,

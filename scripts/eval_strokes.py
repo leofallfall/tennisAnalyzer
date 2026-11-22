@@ -12,6 +12,11 @@ Usage:
     uv run python scripts/eval_strokes.py compare MANIFEST LABELS
         [--results-dir DIR] [--tolerance-s 0.25] [--targets forehand,backhand]
         [--out REPORT.md] [--json DATA.json]
+    uv run python scripts/eval_strokes.py validate-strokes STROKES [--inputs DIR | --no-inputs]
+
+``validate-strokes`` checks a strokes.json 1.x file: version, schema, the eight invariants
+and (unless --no-inputs) the sha256 of pose.json / timemap.json in DIR (default: the
+folder of STROKES). See docs/M2_3_EVENTS.md.
 
 DIR defaults to tests/fixtures/real (git-ignored: real footage is never committed).
 """
@@ -57,6 +62,7 @@ from tennis_cv.evaluation.visibility import (
     DEFAULT_WINDOW_S,
     analyse_impacts,
 )
+from tennis_cv.strokes.artifact import check_inputs, load_strokes
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = ROOT / "tests" / "fixtures" / "real"
@@ -273,6 +279,35 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_validate_strokes(args: argparse.Namespace) -> int:
+    doc = load_strokes(args.strokes)
+    stale: list[str] = []
+    if not args.no_inputs:
+        stale = check_inputs(doc, args.inputs or args.strokes.parent)
+    statuses: dict[str, int] = {}
+    for e in doc.events:
+        statuses[e.status.value] = statuses.get(e.status.value, 0) + 1
+    grouped = sum(1 for p in doc.wrist_peaks if p.event_id is not None)
+    print(
+        f"{args.strokes.name}: {doc.schema_version}, producer {doc.producer.algorithm} "
+        f"{doc.producer.algorithm_version}, time basis {doc.time_basis.value}"
+    )
+    print(
+        f"  wrist peaks: {len(doc.wrist_peaks)} ({grouped} grouped, "
+        f"{len(doc.wrist_peaks) - grouped} discarded); events: {len(doc.events)} "
+        + (", ".join(f"{k} {v}" for k, v in sorted(statuses.items())) or "none")
+    )
+    if args.no_inputs:
+        print("  input hashes: not checked (--no-inputs)")
+    for problem in stale:
+        print(f"WARNING {problem}", file=sys.stderr)
+    if stale:
+        print("STALE: strokes.json does not match its input files.", file=sys.stderr)
+        return 1
+    print("OK: schema and the eight invariants hold.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     sub = p.add_subparsers(dest="command", required=True)
@@ -304,6 +339,13 @@ def main(argv: list[str] | None = None) -> int:
             s.add_argument("--results-dir", type=Path, default=None)
             s.add_argument("--tolerance-s", type=float, default=DEFAULT_TOLERANCE_S)
             s.add_argument("--targets", default=",".join(sorted(t.value for t in DEFAULT_TARGETS)))
+
+    s = sub.add_parser("validate-strokes", help="check a strokes.json 1.x file")
+    s.add_argument("strokes", type=Path)
+    g = s.add_mutually_exclusive_group()
+    g.add_argument("--inputs", type=Path, default=None, help="folder with pose.json/timemap.json")
+    g.add_argument("--no-inputs", action="store_true", help="skip the input hash check")
+    s.set_defaults(func=cmd_validate_strokes)
 
     args = p.parse_args(argv)
     try:

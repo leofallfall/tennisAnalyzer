@@ -8,3 +8,5 @@ pnpm-lock.yaml
 packages/contracts/schema
 docs
 *.md
+# canonical strokes.json written by dump_strokes: byte-exact, not Prettier style
+tests/fixtures/strokes

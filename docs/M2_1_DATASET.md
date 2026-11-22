@@ -143,7 +143,9 @@ uv run python scripts/eval_strokes.py compare MANIFEST LABELS [--results-dir DIR
 ```
 
 Events are read from `<pose_dir>/strokes.json`, or `<DIR>/<clip_id>.strokes.json`. Only
-these fields are used (others are ignored, so the future M2.3 file is compatible):
+these fields are used (others are ignored). **This minimal format is not `strokes.json` 1.0**
+(docs/M2_3_EVENTS.md, ADR-022): 1.0 files have no `peak_frame`; the `evaluate` command
+planned for M2.3 reads both formats, `compare` stays as it is:
 
 ```json
 {"events": [{"id": "s1", "peak_frame": 812, "stroke_type": "forehand", "status": "classified"}]}

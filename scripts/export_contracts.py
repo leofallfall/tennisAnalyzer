@@ -21,6 +21,7 @@ from tennis_api.ai.result import AnalysisResult
 from tennis_cv.biomechanics import Interpretation, Measurement, Observation, Recommendation
 from tennis_cv.pipeline import ProcessingReport
 from tennis_cv.pose.models import PoseSequence
+from tennis_cv.strokes.artifact import StrokesFile
 from tennis_cv.video.timemap import TimeMap
 
 SCHEMA_DIR = Path(__file__).resolve().parents[1] / "packages" / "contracts" / "schema"
@@ -28,6 +29,7 @@ CONTRACTS: dict[str, type[BaseModel]] = {
     "processing_report": ProcessingReport,
     "pose_sequence": PoseSequence,
     "time_map": TimeMap,
+    "strokes_v1": StrokesFile,
     "measurement": Measurement,
     "observation": Observation,
     "interpretation": Interpretation,

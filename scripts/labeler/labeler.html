@@ -1,0 +1,946 @@
+<!doctype html>
+<!--
+  Etichettatore locale per il dataset dei colpi (M2.1 / M2.3).
+  Un solo file, nessuna dipendenza, nessuna rete: aprilo con doppio clic in Chrome o Edge.
+  Esporta labels.csv e annotated.csv nel formato letto da
+  `uv run python scripts/eval_strokes.py check MANIFEST LABELS`.
+  Vedi docs/M2_1_DATASET.md, sezione "Labelling page".
+-->
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <title>Etichettatore colpi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      :root {
+        --bg: #f6f7f9;
+        --fg: #1b1f24;
+        --muted: #5b6470;
+        --line: #d5d9df;
+        --accent: #1f6feb;
+        --warn: #9a6700;
+        --err: #cf222e;
+        --ok: #1a7f37;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          14px/1.4 system-ui,
+          sans-serif;
+        color: var(--fg);
+        background: var(--bg);
+      }
+      header {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: end;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #fff;
+      }
+      header label {
+        display: flex;
+        flex-direction: column;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 460px;
+        gap: 14px;
+        padding: 14px;
+      }
+      section {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+      }
+      h2 {
+        font-size: 14px;
+        margin: 0 0 8px;
+      }
+      video {
+        width: 100%;
+        max-height: 70vh;
+        background: #000;
+        border-radius: 6px;
+      }
+      .frame {
+        font:
+          600 28px/1.2 ui-monospace,
+          monospace;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin: 6px 0;
+      }
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        font-weight: 600;
+      }
+      .pill.on {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+      kbd {
+        border: 1px solid var(--line);
+        border-bottom-width: 2px;
+        border-radius: 4px;
+        padding: 0 4px;
+        font:
+          12px ui-monospace,
+          monospace;
+        background: #fafbfc;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 3px 4px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      tr.here {
+        background: #ddf4ff;
+      }
+      td input {
+        width: 100%;
+      }
+      .scroll {
+        max-height: 34vh;
+        overflow: auto;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .err {
+        color: var(--err);
+      }
+      .warn {
+        color: var(--warn);
+      }
+      .ok {
+        color: var(--ok);
+      }
+      ul.issues {
+        margin: 4px 0;
+        padding-left: 18px;
+      }
+      button {
+        cursor: pointer;
+      }
+      .help td:first-child {
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <label
+        >Video (proxy.mp4 o overlay.mp4)
+        <input id="file" type="file" accept="video/*" />
+      </label>
+      <label
+        >clip_id (come nel MANIFEST)
+        <input id="clip" type="text" placeholder="es. img4893" size="14" />
+      </label>
+      <label
+        >fps del proxy
+        <input id="fps" type="number" step="0.001" min="1" value="30" style="width: 90px" />
+      </label>
+
+      <label
+        >Importa CSV esistenti
+        <input id="import" type="file" accept=".csv,text/csv" multiple />
+      </label>
+      <div class="row" style="margin-left: auto">
+        <button id="export-labels">Scarica labels.csv</button>
+        <button id="export-annotated">Scarica annotated.csv</button>
+      </div>
+    </header>
+
+    <main>
+      <div>
+        <section>
+          <video id="video" preload="auto" muted playsinline></video>
+          <div class="row">
+            <span class="frame" id="frame-label">frame –</span>
+            <span class="muted" id="time-label"></span>
+            <span class="muted" id="total-label"></span>
+          </div>
+          <div class="row">
+            <button data-step="-10">« 10</button>
+            <button data-step="-1">‹ 1</button>
+            <button id="play">▶︎ / ❚❚</button>
+            <button data-step="1">1 ›</button>
+            <button data-step="10">10 »</button>
+            <label class="row"
+              >vai al frame <input id="goto" type="number" min="0" style="width: 90px"
+            /></label>
+            <label class="row"
+              >velocità
+              <select id="rate">
+                <option>0.25</option>
+                <option>0.5</option>
+                <option selected>1</option>
+              </select>
+            </label>
+          </div>
+          <p class="muted" style="margin: 4px 0 0">
+            Sull'overlay il numero <b>#N</b> stampato in alto a sinistra deve coincidere con il
+            frame mostrato qui. Se non coincide, il valore di fps è sbagliato: correggilo prima di
+            etichettare.
+          </p>
+        </section>
+
+        <section>
+          <h2>Comandi</h2>
+          <table class="help">
+            <tr>
+              <td><kbd>←</kbd> <kbd>→</kbd> (<kbd>Shift</kbd> = 10)</td>
+              <td>frame precedente / successivo</td>
+            </tr>
+            <tr>
+              <td><kbd>Spazio</kbd></td>
+              <td>play / pausa</td>
+            </tr>
+            <tr>
+              <td><kbd>D</kbd> <kbd>R</kbd> <kbd>S</kbd> <kbd>V</kbd> <kbd>O</kbd> <kbd>N</kbd></td>
+              <td>
+                segna sul frame corrente: dritto, rovescio, battuta, volée, altro colpo, nessun
+                colpo (movimento scambiabile per un colpo). Sullo stesso frame e giocatore
+                sostituisce il tipo.
+              </td>
+            </tr>
+            <tr>
+              <td><kbd>G</kbd></td>
+              <td>cambia giocatore: A (tu) → B → C → A</td>
+            </tr>
+            <tr>
+              <td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td>
+              <td>visibilità dell'impatto per le prossime etichette: piena, parziale, nessuna</td>
+            </tr>
+            <tr>
+              <td><kbd>I</kbd> / <kbd>E</kbd></td>
+              <td>inizio / fine dell'intervallo annotato (con la copertura scelta sotto)</td>
+            </tr>
+            <tr>
+              <td><kbd>Canc</kbd></td>
+              <td>cancella le etichette sul frame corrente</td>
+            </tr>
+          </table>
+        </section>
+      </div>
+
+      <div>
+        <section>
+          <h2>Prossima etichetta</h2>
+          <div class="row">
+            giocatore <span class="pill on" id="player-pill">A</span> visibilità
+            <span class="pill" data-vis="full">1 piena</span>
+            <span class="pill" data-vis="partial">2 parziale</span>
+            <span class="pill" data-vis="none">3 nessuna</span>
+          </div>
+        </section>
+
+        <section>
+          <h2>Intervallo annotato</h2>
+          <div class="row">
+            <span>Tipi annotati in modo completo:</span>
+            <label><input type="checkbox" data-type="forehand" checked /> dritto</label>
+            <label><input type="checkbox" data-type="backhand" checked /> rovescio</label>
+            <label><input type="checkbox" data-type="serve" checked /> battuta</label>
+            <label><input type="checkbox" data-type="volley" checked /> volée</label>
+            <label><input type="checkbox" data-type="other" checked /> altro</label>
+          </div>
+          <div class="row">
+            <span>Giocatori annotati:</span>
+            <select id="cov-players">
+              <option value="A">solo A (basta per l'esaustività)</option>
+              <option value="all_visible">tutti quelli visibili</option>
+              <option value="A;B">A e B</option>
+            </select>
+          </div>
+          <div class="row">
+            <span id="pending" class="muted">Premi I sul primo frame e E sull'ultimo.</span>
+          </div>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>clip</th>
+                  <th>da</th>
+                  <th>a</th>
+                  <th>tipi</th>
+                  <th>giocatori</th>
+                  <th>stato</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="intervals"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section>
+          <h2>Etichette <span class="muted" id="count"></span></h2>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>clip</th>
+                  <th>frame</th>
+                  <th>tipo</th>
+                  <th>gioc.</th>
+                  <th>vis.</th>
+                  <th>polso</th>
+                  <th>note</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="labels"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section>
+          <h2>Controlli</h2>
+          <div id="issues"></div>
+          <p class="muted" style="margin: 6px 0 0">
+            Questi controlli sono un aiuto. Quello che conta è
+            <code>eval_strokes.py check</code>, che legge anche pose.json e il MANIFEST.
+          </p>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      'use strict'
+
+      const LABEL_COLUMNS = [
+        'clip_id',
+        'proxy_frame',
+        'stroke_type',
+        'player',
+        'visibility',
+        'overlay_wrist',
+        'notes',
+      ]
+      const ANNOTATED_COLUMNS = [
+        'clip_id',
+        'start_frame',
+        'end_frame',
+        'labelled_types',
+        'players',
+        'notes',
+      ]
+      const COVERAGE_TYPES = ['forehand', 'backhand', 'serve', 'volley', 'other']
+      const STROKE_KEYS = {
+        d: 'forehand',
+        r: 'backhand',
+        s: 'serve',
+        v: 'volley',
+        o: 'other',
+        n: 'none',
+      }
+      const STROKE_IT = {
+        forehand: 'dritto',
+        backhand: 'rovescio',
+        serve: 'battuta',
+        volley: 'volée',
+        other: 'altro',
+        none: 'nessuno',
+      }
+      const VIS = { 1: 'full', 2: 'partial', 3: 'none' }
+      const WRIST = ['', 'ok', 'off', 'missing', 'other_person']
+      const PLAYERS = ['A', 'B', 'C']
+      const STORE_KEY = 'tennis-labeler-v1'
+
+      const $ = (id) => document.getElementById(id)
+      const video = $('video')
+
+      /** state.labels: {clip_id, proxy_frame, stroke_type, player, visibility, overlay_wrist, notes}
+       *  state.intervals: {clip_id, start_frame, end_frame, labelled_types[], players, notes}
+       */
+      let state = { labels: [], intervals: [], clip: '', fps: 30 }
+      let player = 'A'
+      let visibility = 'full'
+      let pendingStart = null
+
+      // ------------------------------------------------------------ persistence
+
+      function save() {
+        localStorage.setItem(STORE_KEY, JSON.stringify(state))
+      }
+
+      function load() {
+        try {
+          const raw = localStorage.getItem(STORE_KEY)
+          if (raw) state = { ...state, ...JSON.parse(raw) }
+        } catch (e) {
+          console.warn('stato salvato illeggibile', e)
+        }
+        $('clip').value = state.clip || ''
+        $('fps').value = state.fps || 30
+      }
+
+      // ------------------------------------------------------------ frames
+
+      const fps = () => Number($('fps').value) || 30
+      const clipId = () => $('clip').value.trim()
+      const frameCount = () =>
+        Number.isFinite(video.duration) ? Math.round(video.duration * fps()) : 0
+
+      // Same rule as the web player (apps/web/src/lib/frames.ts): seek to the middle of the
+      // frame interval, read the frame with floor.
+      // Chromium reports currentTime = duration after a seek into the last frame or at the end
+      // of playback: that is still the last frame, not one past it.
+      function currentFrame() {
+        const f = Math.max(0, Math.floor(video.currentTime * fps() + 1e-6))
+        const n = frameCount()
+        return n ? Math.min(f, n - 1) : f
+      }
+
+      function seekFrame(n) {
+        const last = Math.max(0, frameCount() - 1)
+        const f = Math.min(Math.max(0, n), last)
+        video.currentTime = (f + 0.5) / fps()
+      }
+
+      function step(delta) {
+        video.pause()
+        seekFrame(currentFrame() + delta)
+      }
+
+      // ------------------------------------------------------------ editing
+
+      function requireClip() {
+        if (!clipId()) {
+          alertIssue('Scrivi il clip_id prima di etichettare.')
+          $('clip').focus()
+          return false
+        }
+        return true
+      }
+
+      function mark(stroke) {
+        if (!requireClip()) return
+        const f = currentFrame()
+        const existing = state.labels.find(
+          (l) => l.clip_id === clipId() && l.proxy_frame === f && l.player === player,
+        )
+        if (existing) {
+          existing.stroke_type = stroke
+          existing.visibility = visibility
+        } else {
+          state.labels.push({
+            clip_id: clipId(),
+            proxy_frame: f,
+            stroke_type: stroke,
+            player,
+            visibility,
+            overlay_wrist: '',
+            notes: '',
+          })
+        }
+        commit()
+      }
+
+      function deleteAtFrame() {
+        const f = currentFrame()
+        state.labels = state.labels.filter((l) => !(l.clip_id === clipId() && l.proxy_frame === f))
+        commit()
+      }
+
+      function coverageSelection() {
+        const types = COVERAGE_TYPES.filter(
+          (t) => document.querySelector(`input[data-type="${t}"]`).checked,
+        )
+        return { types, players: $('cov-players').value }
+      }
+
+      function startInterval() {
+        if (!requireClip()) return
+        pendingStart = currentFrame()
+        render()
+      }
+
+      function endInterval() {
+        if (!requireClip()) return
+        if (pendingStart === null) {
+          alertIssue('Premi prima I sul primo frame dell’intervallo.')
+          return
+        }
+        const { types, players } = coverageSelection()
+        if (types.length === 0) {
+          alertIssue('Scegli almeno un tipo di colpo annotato.')
+          return
+        }
+        const end = currentFrame()
+        state.intervals.push({
+          clip_id: clipId(),
+          start_frame: Math.min(pendingStart, end),
+          end_frame: Math.max(pendingStart, end),
+          labelled_types: types,
+          players,
+          notes: '',
+        })
+        pendingStart = null
+        commit()
+      }
+
+      function commit() {
+        flash = ''
+        state.labels.sort((a, b) =>
+          a.clip_id === b.clip_id
+            ? a.proxy_frame - b.proxy_frame || a.player.localeCompare(b.player)
+            : a.clip_id.localeCompare(b.clip_id),
+        )
+        state.intervals.sort((a, b) =>
+          a.clip_id === b.clip_id
+            ? a.start_frame - b.start_frame
+            : a.clip_id.localeCompare(b.clip_id),
+        )
+        save()
+        render()
+      }
+
+      // ------------------------------------------------------------ checks (mirror of the
+      // Python validator: tennis_cv/evaluation/annotated.py and dataset.py)
+
+      function coverageOf(iv) {
+        const missing = COVERAGE_TYPES.filter((t) => !iv.labelled_types.includes(t))
+        // Revised P2 (2026-11-22): only the analysed player A must be covered. The skeleton
+        // tracks one person; another player's stroke is not a detector event.
+        const listed = iv.players === 'all_visible' ? [] : iv.players.split(';')
+        const missingPlayers = iv.players === 'all_visible' || listed.includes('A') ? null : 'A'
+        return { missing, missingPlayers, exhaustive: !missing.length && !missingPlayers }
+      }
+
+      function checks() {
+        const errors = []
+        const warnings = []
+        const seen = new Map()
+        for (const l of state.labels) {
+          const key = `${l.clip_id}|${l.proxy_frame}|${l.player}`
+          if (seen.has(key))
+            errors.push(`${l.clip_id} frame ${l.proxy_frame}: due etichette per ${l.player}`)
+          seen.set(key, true)
+        }
+        const byClip = {}
+        for (const iv of state.intervals) (byClip[iv.clip_id] ||= []).push(iv)
+        for (const [clip, ivs] of Object.entries(byClip)) {
+          for (let i = 1; i < ivs.length; i++) {
+            if (ivs[i].start_frame <= ivs[i - 1].end_frame)
+              errors.push(
+                `${clip}: intervalli sovrapposti ${ivs[i - 1].start_frame}-${ivs[i - 1].end_frame} e ${ivs[i].start_frame}-${ivs[i].end_frame}`,
+              )
+          }
+        }
+        const clips = new Set([...state.labels.map((l) => l.clip_id), ...Object.keys(byClip)])
+        for (const clip of clips) {
+          if (!byClip[clip])
+            warnings.push(`${clip}: nessun intervallo annotato (copertura sconosciuta)`)
+        }
+        for (const l of state.labels) {
+          const ivs = byClip[l.clip_id]
+          if (!ivs) continue
+          const inside = ivs.find(
+            (iv) => iv.start_frame <= l.proxy_frame && l.proxy_frame <= iv.end_frame,
+          )
+          if (!inside) {
+            errors.push(`${l.clip_id} frame ${l.proxy_frame}: etichetta fuori da ogni intervallo`)
+            continue
+          }
+          if (l.stroke_type !== 'none' && !inside.labelled_types.includes(l.stroke_type))
+            warnings.push(
+              `${l.clip_id} frame ${l.proxy_frame}: ${STROKE_IT[l.stroke_type]} in un intervallo che non lo dichiara`,
+            )
+          if (inside.players !== 'all_visible' && !inside.players.split(';').includes(l.player))
+            warnings.push(
+              `${l.clip_id} frame ${l.proxy_frame}: giocatore ${l.player} in un intervallo che non lo dichiara`,
+            )
+        }
+        if (pendingStart !== null)
+          warnings.push(`intervallo aperto dal frame ${pendingStart}: chiudilo con E`)
+        return { errors, warnings }
+      }
+
+      // ------------------------------------------------------------ CSV
+
+      function csvCell(v) {
+        const s = String(v ?? '')
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+      }
+
+      function parseCsvLine(line) {
+        const out = []
+        let cur = ''
+        let q = false
+        for (let i = 0; i < line.length; i++) {
+          const c = line[i]
+          if (q) {
+            if (c === '"' && line[i + 1] === '"') {
+              cur += '"'
+              i++
+            } else if (c === '"') q = false
+            else cur += c
+          } else if (c === '"') q = true
+          else if (c === ',') {
+            out.push(cur)
+            cur = ''
+          } else cur += c
+        }
+        out.push(cur)
+        return out.map((s) => s.trim())
+      }
+
+      function labelsCsv() {
+        const head = [
+          '# One row per impact, read on overlay.mp4 (frame number printed top left as #N).',
+          '# stroke_type: forehand backhand serve volley other none | player: A = analysed player',
+          '# visibility: full partial none | overlay_wrist: ok off missing other_person, or empty',
+          '# Written by scripts/labeler/labeler.html',
+          LABEL_COLUMNS.join(','),
+        ]
+        const rows = state.labels.map((l) => LABEL_COLUMNS.map((c) => csvCell(l[c])).join(','))
+        return [...head, ...rows].join('\n') + '\n'
+      }
+
+      function annotatedCsv() {
+        const head = [
+          '# Annotated intervals: proxy frames, both ends included; no overlaps within a clip.',
+          '# labelled_types: forehand;backhand;serve;volley;other (or all) | players: all_visible or A;B',
+          '# Written by scripts/labeler/labeler.html',
+          ANNOTATED_COLUMNS.join(','),
+        ]
+        const rows = state.intervals.map((iv) =>
+          [
+            iv.clip_id,
+            iv.start_frame,
+            iv.end_frame,
+            iv.labelled_types.length === COVERAGE_TYPES.length
+              ? 'all'
+              : iv.labelled_types.join(';'),
+            iv.players,
+            iv.notes,
+          ]
+            .map(csvCell)
+            .join(','),
+        )
+        return [...head, ...rows].join('\n') + '\n'
+      }
+
+      function download(name, text) {
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }))
+        a.download = name
+        a.click()
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000)
+      }
+
+      async function importCsv(file) {
+        const lines = (await file.text())
+          .split(/\r?\n/)
+          .filter((l) => l.trim() && !l.trimStart().startsWith('#'))
+        if (!lines.length) return `${file.name}: vuoto`
+        const header = parseCsvLine(lines[0])
+        const rows = lines.slice(1).map(parseCsvLine)
+        const asObj = (r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? '']))
+        if (header.join(',') === LABEL_COLUMNS.join(',')) {
+          const incoming = rows.map(asObj).map((r) => ({
+            ...r,
+            proxy_frame: Number(r.proxy_frame),
+          }))
+          const keys = new Set(incoming.map((r) => `${r.clip_id}|${r.proxy_frame}|${r.player}`))
+          state.labels = [
+            ...state.labels.filter((l) => !keys.has(`${l.clip_id}|${l.proxy_frame}|${l.player}`)),
+            ...incoming,
+          ]
+          return `${file.name}: ${incoming.length} etichette`
+        }
+        if (header.join(',') === ANNOTATED_COLUMNS.join(',')) {
+          const incoming = rows.map(asObj).map((r) => ({
+            ...r,
+            start_frame: Number(r.start_frame),
+            end_frame: Number(r.end_frame),
+            labelled_types:
+              r.labelled_types === 'all' ? [...COVERAGE_TYPES] : r.labelled_types.split(';'),
+          }))
+          const clips = new Set(incoming.map((r) => r.clip_id))
+          state.intervals = [...state.intervals.filter((iv) => !clips.has(iv.clip_id)), ...incoming]
+          return `${file.name}: ${incoming.length} intervalli (sostituiscono quelli degli stessi clip)`
+        }
+        return `${file.name}: intestazione non riconosciuta`
+      }
+
+      // ------------------------------------------------------------ rendering
+
+      let flash = ''
+      function alertIssue(msg) {
+        flash = msg
+        render()
+      }
+
+      function el(tag, attrs = {}, ...children) {
+        const e = document.createElement(tag)
+        for (const [k, v] of Object.entries(attrs)) {
+          if (k.startsWith('on')) e.addEventListener(k.slice(2), v)
+          else if (k === 'className') e.className = v
+          else e.setAttribute(k, v)
+        }
+        for (const c of children) e.append(c instanceof Node ? c : String(c))
+        return e
+      }
+
+      function renderFrame() {
+        const f = currentFrame()
+        $('frame-label').textContent = `frame ${f}`
+        $('time-label').textContent = `${(f / fps()).toFixed(3)} s`
+        const n = frameCount()
+        $('total-label').textContent = n ? `di ${n} (ultimo ${n - 1})` : ''
+        for (const tr of document.querySelectorAll('tr[data-frame]')) {
+          tr.classList.toggle(
+            'here',
+            tr.dataset.clip === clipId() && Number(tr.dataset.frame) === f,
+          )
+        }
+      }
+
+      function render() {
+        $('player-pill').textContent = player
+        for (const p of document.querySelectorAll('[data-vis]'))
+          p.classList.toggle('on', p.dataset.vis === visibility)
+        $('pending').textContent =
+          pendingStart === null
+            ? 'Premi I sul primo frame e E sull’ultimo.'
+            : `Intervallo aperto dal frame ${pendingStart}: vai all’ultimo frame e premi E.`
+
+        const lb = $('labels')
+        lb.replaceChildren()
+        for (const l of state.labels) {
+          const wrist = el('select', {
+            onchange: (e) => {
+              l.overlay_wrist = e.target.value
+              save()
+            },
+          })
+          for (const w of WRIST) {
+            const o = el('option', { value: w }, w || '–')
+            if (w === (l.overlay_wrist || '')) o.selected = true
+            wrist.append(o)
+          }
+          const notes = el('input', {
+            value: l.notes || '',
+            onchange: (e) => {
+              l.notes = e.target.value
+              save()
+            },
+          })
+          lb.append(
+            el(
+              'tr',
+              { 'data-clip': l.clip_id, 'data-frame': l.proxy_frame },
+              el('td', {}, l.clip_id),
+              el(
+                'td',
+                {},
+                el(
+                  'a',
+                  {
+                    href: '#',
+                    onclick: (e) => {
+                      e.preventDefault()
+                      if (l.clip_id === clipId()) seekFrame(l.proxy_frame)
+                    },
+                  },
+                  l.proxy_frame,
+                ),
+              ),
+              el('td', {}, STROKE_IT[l.stroke_type] || l.stroke_type),
+              el('td', {}, l.player),
+              el('td', {}, l.visibility),
+              el('td', {}, wrist),
+              el('td', {}, notes),
+              el(
+                'td',
+                {},
+                el(
+                  'button',
+                  {
+                    title: 'elimina',
+                    onclick: () => {
+                      state.labels = state.labels.filter((x) => x !== l)
+                      commit()
+                    },
+                  },
+                  '✕',
+                ),
+              ),
+            ),
+          )
+        }
+        $('count').textContent = `(${state.labels.length})`
+
+        const ib = $('intervals')
+        ib.replaceChildren()
+        for (const iv of state.intervals) {
+          const cov = coverageOf(iv)
+          const status = cov.exhaustive
+            ? el('span', { className: 'ok' }, 'esaustivo')
+            : el(
+                'span',
+                { className: 'warn' },
+                'manca: ' +
+                  [
+                    ...cov.missing.map((t) => STROKE_IT[t]),
+                    ...(cov.missingPlayers ? [cov.missingPlayers] : []),
+                  ].join(', '),
+              )
+          ib.append(
+            el(
+              'tr',
+              {},
+              el('td', {}, iv.clip_id),
+              el('td', {}, iv.start_frame),
+              el('td', {}, iv.end_frame),
+              el(
+                'td',
+                {},
+                iv.labelled_types.length === COVERAGE_TYPES.length
+                  ? 'tutti'
+                  : iv.labelled_types.map((t) => STROKE_IT[t]).join(', '),
+              ),
+              el('td', {}, iv.players === 'all_visible' ? 'tutti i visibili' : iv.players),
+              el('td', {}, status),
+              el(
+                'td',
+                {},
+                el(
+                  'button',
+                  {
+                    title: 'elimina',
+                    onclick: () => {
+                      state.intervals = state.intervals.filter((x) => x !== iv)
+                      commit()
+                    },
+                  },
+                  '✕',
+                ),
+              ),
+            ),
+          )
+        }
+
+        const { errors, warnings } = checks()
+        const box = $('issues')
+        box.replaceChildren()
+        if (flash) box.append(el('p', { className: 'err' }, flash))
+        if (!errors.length && !warnings.length)
+          box.append(el('p', { className: 'ok' }, 'Nessun problema trovato.'))
+        if (errors.length)
+          box.append(el('ul', { className: 'issues err' }, ...errors.map((e) => el('li', {}, e))))
+        if (warnings.length)
+          box.append(
+            el('ul', { className: 'issues warn' }, ...warnings.map((w) => el('li', {}, w))),
+          )
+        renderFrame()
+      }
+
+      // ------------------------------------------------------------ wiring
+
+      $('file').addEventListener('change', (e) => {
+        const f = e.target.files[0]
+        if (!f) return
+        video.src = URL.createObjectURL(f)
+        // Never guess the clip_id from the file name (overlay.mp4 / proxy.mp4 say nothing),
+        // and never keep the previous one silently: ask to confirm it for this video.
+        flash = clipId()
+          ? `Video caricato: ${f.name}. Il clip_id è ancora "${clipId()}": è quello giusto per questo video? Se no, cambialo prima di etichettare.`
+          : `Video caricato: ${f.name}. Scrivi il clip_id del MANIFEST prima di etichettare.`
+        render()
+        $('clip').focus()
+        $('clip').select()
+      })
+      video.addEventListener('loadedmetadata', () => seekFrame(0))
+      video.addEventListener('seeked', renderFrame)
+      video.addEventListener('timeupdate', renderFrame)
+      $('clip').addEventListener('change', () => {
+        state.clip = clipId()
+        flash = ''
+        save()
+        render()
+      })
+      $('fps').addEventListener('change', () => {
+        state.fps = fps()
+        save()
+        renderFrame()
+      })
+      $('rate').addEventListener('change', (e) => (video.playbackRate = Number(e.target.value)))
+      $('play').addEventListener('click', () => (video.paused ? video.play() : video.pause()))
+      $('goto').addEventListener('change', (e) => {
+        video.pause()
+        seekFrame(Number(e.target.value))
+      })
+      for (const b of document.querySelectorAll('[data-step]'))
+        b.addEventListener('click', () => step(Number(b.dataset.step)))
+      $('export-labels').addEventListener('click', () => download('labels.csv', labelsCsv()))
+      $('export-annotated').addEventListener('click', () =>
+        download('annotated.csv', annotatedCsv()),
+      )
+      $('import').addEventListener('change', async (e) => {
+        const msgs = []
+        for (const f of e.target.files) msgs.push(await importCsv(f))
+        e.target.value = ''
+        commit()
+        alertIssue(msgs.join(' · '))
+      })
+
+      document.addEventListener('keydown', (e) => {
+        const t = e.target
+        if (t instanceof HTMLInputElement && t.type !== 'checkbox') return
+        if (t instanceof HTMLSelectElement) return
+        if (e.ctrlKey || e.metaKey || e.altKey) return
+        const k = e.key.toLowerCase()
+        let handled = true
+        if (k === 'arrowleft') step(e.shiftKey ? -10 : -1)
+        else if (k === 'arrowright') step(e.shiftKey ? 10 : 1)
+        else if (k === ' ') video.paused ? video.play() : video.pause()
+        else if (k in STROKE_KEYS) mark(STROKE_KEYS[k])
+        else if (k === 'g') {
+          player = PLAYERS[(PLAYERS.indexOf(player) + 1) % PLAYERS.length]
+          render()
+        } else if (k in VIS) {
+          visibility = VIS[k]
+          render()
+        } else if (k === 'i') startInterval()
+        else if (k === 'e') endInterval()
+        else if (k === 'delete' || k === 'backspace') deleteAtFrame()
+        else handled = false
+        if (handled) e.preventDefault()
+      })
+      // Leave the video focused-free so the arrows never trigger the native player's seek.
+      video.addEventListener('focus', () => video.blur())
+
+      load()
+      render()
+    </script>
+  </body>
+</html>

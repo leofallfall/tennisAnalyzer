@@ -1,9 +1,9 @@
 # M2.2 — Signal processing (pose signals)
 
-Status (2026-11-20): **interventions 1 (time base), 2 (smoothing of positions), 3 (two
-quality levels, LOW from 0.4) and 4 (torso scale) done; intervention 5 (apparent 2D speed)
-under review** (plan: ADR-019). Accelerations, peaks and the complementary signals of
-intervention 6 are **not implemented**. Each intervention
+Status (2026-11-22): **interventions 1 (time base), 2 (smoothing of positions), 3 (two
+quality levels, LOW from 0.4), 4 (torso scale) and 5 (apparent 2D speed) done;
+intervention 6 (body signals, player configuration) under review** (plan: ADR-019).
+Accelerations and peaks are **not implemented**. Each intervention
 is reviewed before the next one starts. Scope (approved 2026-11-20): signals only, NumPy
 only, no change to pipeline / worker / API / UI, no stroke detection (M2.3) and no
 forehand/backhand classification (M2.4). The package `engine/tennis_cv/signals/` is a pure
@@ -419,9 +419,148 @@ offset is measured properly in M2.3 (ADR-021).
   `low_in_window`).
 * No accelerations (out of scope).
 
-## 7. Not implemented yet (next interventions, after review)
+## 7. Body signals and player configuration (`tennis_cv.signals.body`, intervention 6)
 
-Intervention 6 (ADR-019): shoulder and hip lines (degrees), distance between hands and
-wrist position relative to the torso (torso units, GOOD-only where sensitive), player
-configuration (dominant hand, backhand type). Accelerations are out of scope; peak finding
-belongs to M2.3.
+```python
+player = PlayerConfig(Hand.RIGHT, Backhand.TWO_HANDED)  # declared, never inferred
+sig = body_signals(poses, timebase, player)  # BodySignals: every signal with its state
+sig.shoulder_line_deg.value  # degrees
+sig.hands_distance.value  # px; .value_torso in torso lengths (NaN without scale)
+sig.wrist_lateral[player.reference_side("backhand")].value_torso
+```
+
+**Method.** Every signal is computed per sample from the **smoothed positions** of §4 (same
+runs, windows and states); nothing is smoothed again or interpolated. Pixel values are kept;
+`value_torso` divides by the stabilised torso length of §5.
+
+| Signal | Unit | Definition |
+|---|---|---|
+| `shoulder_line_deg`, `hip_line_deg` | degrees, (−180, 180] | direction of the line from the **left** to the **right** keypoint (MediaPipe's anatomical sides), image y axis **up**: 0 = right keypoint to the image right of the left one (seen from behind, square), 180 = seen from the front, +90 = right keypoint above the left one |
+| `shoulder_width`, `hip_width` | px, torso | apparent distance between the two keypoints; shrinks as the line turns towards the camera axis |
+| `hands_distance` | px, torso | distance between the wrists, **GOOD samples only** |
+| `wrist_lateral[side]`, `wrist_vertical[side]` | px, torso | wrist minus **mid-hip point**, in **image axes**: lateral = image x (positive = image right), vertical = image y pointing up (positive = above the hips); two separate signals |
+
+Geometric choices (alternatives in ADR-019, addendum):
+
+* **Reference for the wrist: mid-hip point, image axes.** Axes attached to the trunk would
+  change with every bend or tilt of the trunk; image axes do not (the camera is fixed and
+  roughly upright in the M2.1 clips). The hips rather than the shoulders: the vertical
+  value then reads "above / below the hips", independent of shoulder tilt during the swing.
+  Which image side is "towards the dominant hand" depends on the view (behind vs front),
+  so the sign is not flipped by handedness.
+* **Directed angle, not a line modulo 180°.** Keeping the direction tells "left shoulder on
+  the image left" (seen from behind) from the opposite; the price is a wrap at ±180°. The
+  angle is not unwrapped, not smoothed and not differentiated; statistics across the wrap
+  (e.g. a side view with values near ±180°) need circular handling by the consumer.
+* **GOOD-only = no LOW sample in either wrist's fit** (`low_in_window == 0` for both), so the
+  smoothed value comes from GOOD samples only. Otherwise the value is withheld
+  (`low_excluded`).
+
+**States** (`SignalState`), combined over every keypoint a signal uses (the wrist positions
+use the wrist and both hips): `unreliable` > `too_short` > `low_excluded` > `edge` >
+`valid`; only `valid` and `edge` have a value. `low_in_window` is the sum over the
+keypoints. As for velocities, `state` never depends on the scale; `scale_state` is reported
+apart. Angles have no torso value (`value_torso = None`).
+
+**PlayerConfig** (`dominant_hand`, `backhand`, the manifest's enums) is an explicit input and
+changes no value (test). It names roles: `dominant_side`, `non_dominant_side` and
+`reference_side(stroke)` = dominant wrist for forehands and one-handed backhands,
+non-dominant wrist for two-handed backhands (the convention of the M2.1 labels and §6.1:
+the wrist seen best on these clips, not a biomechanical statement). `unknown` gives no role.
+
+`body_signals` also returns the torso scale and the velocities of both wrists (§6), so one
+call gives every M2.2 signal with its state.
+
+**Synthetic checks** (`tests/unit/test_signals_body.py`): static geometry with known values
+(angles 0°, widths 0.4 / 0.3 torso, wrist −0.3 / +0.25 torso, signs); tilt and front view
+(180°, never −180°); a turning shoulder line (angle and width follow the positions exactly);
+**mirror test**: mirrored image with swapped sides and a left-handed configuration gives
+opposite line angles, opposite lateral positions, equal vertical positions and distances,
+and mirrored roles; the configuration changes no value; GOOD-only hands distance withheld
+exactly where a LOW wrist sample enters a fit (11 samples for 5 LOW frames) while the wrist
+position keeps a marked value; states combined over keypoints (unreliable hips remove the
+wrist positions, not the hands distance; too-short runs); missing scale keeps pixel values
+and states.
+
+### 7.1 Values at the 34 labelled forehand/backhand impacts (observed, not interpreted)
+
+The sample of each labelled impact; reference wrist from the manifest's configuration
+(right-handed, two-handed backhand: right wrist for forehands, left for backhands). Values
+in torso lengths except angles. Min / median / max over the impacts with a value. This
+describes what the signals return on one player's clips; it is not a validation and says
+nothing about technique.
+
+| Behind view | Forehand (15) | Backhand (12) |
+|---|---|---|
+| Shoulder line (°) | 15 with value: −29 / −3 / 77 | 12: −71 / −42 / 29 |
+| Hip line (°) | 15: −8 / 0 / 147 | 12: −102 / −33 / 24 |
+| Shoulder width | 15: 0.18 / 0.52 / 0.67 | 12: 0.21 / 0.40 / 0.54 |
+| Hip width | 15: 0.01 / 0.30 / 0.37 | 12: 0.09 / 0.20 / 0.37 |
+| Hands distance (GOOD only) | **1** (10 `low_excluded`, 4 `unreliable`) | **0** (7 `low_excluded`, 5 `unreliable`) |
+| Reference wrist, lateral | 15: −0.11 / 1.00 / 1.34 | 12: −0.82 / −0.60 / −0.35 |
+| Reference wrist, vertical | 15: 0.01 / 0.39 / 0.94 | 12: −0.24 / 0.28 / 0.78 |
+
+Side view from the forehand side (img4912, 7 impacts): forehand line angles lie around
+±180° (4 of 4, across the wrap, so no median is given); hands distance 4 of 4 forehands, 0 of
+3 backhands; the backhand reference wrist has no value on 3 of 3 (unreliable), as in §6.1.
+All 34 impacts have a torso scale (`ok`); states at the impacts are `valid` except one
+`edge` backhand (img5098 frame 676).
+
+Two impacts checked on the overlay (developer's review, 2026-11-22; sheet
+`m2_2/anomalie_overlay_pr10.jpg` in the project files):
+
+* **img4894 frame 853 (forehand):** shoulder 77°, hip 147°, shoulder width 0.18, hip width
+  0.01. The keypoints used are correct (right wrist on the racket, visibility 0.97; no
+  left/right swap). The player is very close to the camera and almost in profile, so the
+  two hips overlap (138,752 and 137,752 px) and the shoulders nearly do: the line angles are
+  computable but have no geometric meaning (the hip angle jumps from 147° to 4° between
+  frames 853 and 854). Cause: the view, not occlusion or a model error. Widths and the wrist
+  position are not affected. The same situation (hip width below 0.1 torso) occurs at 3 of
+  the 34 impacts (img4894 853, img5098_1 37, img4912_m3 700).
+* **img5098 frame 582 (forehand):** right wrist at −0.11 lateral, 0.56 vertical. Shoulders
+  and hips are correct; at frames 581–582 the right arm crosses in front of the body and the
+  wrist is hidden by the torso, so its drawn position (on the chest) is an estimate
+  (visibility 0.96 → 0.67, still GOOD; below 0.5 from frame 586). No swap. Here the wrist's
+  lateral position changes by about **0.3 torso lengths per frame** (0.90 at frame 578, 0.27
+  at 580), so the position at impact is very sensitive to the time error of the label: the
+  impact may be 1–3 frames earlier than labelled, but this cannot be confirmed on the
+  images (the ball is not visible). Nothing is corrected here.
+
+**Distance between the hands (decision, 2026-11-22).** Both wrists must be GOOD over the
+whole fitting window; otherwise the state is `low_excluded`. The quality thresholds are not
+changed. The measure is usable only on samples where both hands are sufficiently
+observable: it is **not** a generally usable indicator at the impact (in the behind view it
+has a value at 1 of 27 impacts, because the wrist hidden behind the body is LOW or
+unreliable there); it may be assessed in parts of the stroke where both hands are visible.
+
+### 7.2 Limits
+
+* All signals are 2D projections: angles mix rotation, tilt and the camera view; widths
+  shrink with rotation and with distance errors of the scale.
+* **Validity of line angles.** An angle is computable whenever both keypoints have a
+  value, but it is geometrically interpretable only if the apparent width of the line is
+  not very small compared with the torso scale: when the line points along the camera
+  axis (player in profile) the two keypoints nearly coincide and the direction is
+  dominated by keypoint noise (§7.1, img4894 frame 853). A computed value is therefore not
+  the same as a valid orientation; read the angle together with the width of the same
+  line. No width threshold is set in M2.2 (none is validated).
+* MediaPipe left/right swaps of a keypoint pair flip a line angle by about 180° and are not
+  detected here.
+* Wrist positions inherit the noise of three keypoints (wrist and both hips).
+* Image axes assume a fixed, roughly upright camera.
+
+## 8. Summary of M2.2 (interventions 1–6)
+
+| # | Module | Provides | Key rules |
+|---|---|---|---|
+| 1 | `timebase` | sample times, repeats removed, interval classes, segments | never cross a segment; map checks |
+| 2–3 | `smoothing` | quality GOOD / LOW (0.4–0.5) / UNRELIABLE; local quadratic fit on real times (0.2 s) | LOW contributes and stays marked; unreliable breaks runs; `edge` marked; no interpolation |
+| 4 | `scale` | stabilised torso length (median, 1 s, GOOD only) | no value without enough measurements; centred (offline only) |
+| 5 | `velocity` | apparent 2D speed (px/s, torso/s) from the same fit | states inherited; `edge` ≠ `valid`; no accelerations |
+| 6 | `body` | shoulder / hip lines (°), widths, hands distance (GOOD only), wrist vs hips (lateral / vertical), `PlayerConfig` | states combined over keypoints; scale state apart |
+
+Not in M2.2: accelerations, peak finding (M2.3), stroke detection (M2.3), forehand/backhand
+(M2.4), any use by pipeline, worker, API or UI. Evidence so far is synthetic tests plus
+observed behaviour on one player's 13 videos / 34 forehand-backhand impacts; nothing is
+validated. Provisional values: visibility 0.5 / 0.4, smoothing window 0.2 s, scale window
+1 s and 50 %.

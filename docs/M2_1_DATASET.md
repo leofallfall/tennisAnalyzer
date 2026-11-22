@@ -138,21 +138,27 @@ Rules checked by `eval_strokes.py check` (errors with file and line):
 * a label inside an interval that does not declare its type or player → warning (allowed,
   but it does not make the interval exhaustive).
 
-**Exhaustive interval** (rule P2 of the M2.3 evaluation proposal, function
-`coverage()` in `annotated.py`): `labelled_types` covers all five stroke types **and**
-`players = all_visible`; `A` alone is enough only if the manifest says
-`other_people = no`. Only exhaustive intervals let M2.3 judge unmatched detector events
-automatically; everything else goes to manual review. `check` prints, per interval,
-`exhaustive` or what is missing. With the 2026-11-19/20 labels (forehands and backhands of
-A only) no interval can be exhaustive.
+**Exhaustive interval** (rule P2 of the M2.3 evaluation proposal, revised on 2026-11-22,
+function `coverage()` in `annotated.py`): `labelled_types` covers all five stroke types
+**and** the analysed player is covered (`players` lists `A`, or `all_visible`). Other
+players are not required: the pose estimator tracks a single skeleton, so another
+player's stroke can produce a detector event only if the skeleton jumps onto that person,
+and that is a tracking error (`overlay_wrist = other_person`, or a jump in the pose), not
+an unlabelled stroke. The first version required `all_visible` whenever the manifest said
+`other_people = yes`; Leonardo replaced it after the first real labelling session. Only
+exhaustive intervals let M2.3 judge unmatched detector events automatically; everything
+else goes to manual review. `check` prints, per interval, `exhaustive` or what is missing.
+With the 2026-11-19/20 labels (forehands and backhands of A only) no interval can be
+exhaustive.
 
 ### 4b. Labelling page (`scripts/labeler/labeler.html`)
 
 A single HTML file with no dependencies and no network access: open it with a double click
 in Chrome or Edge. It replaces reading `#N` in VLC and typing rows by hand.
 
-1. Choose the clip's `overlay.mp4` (or `proxy.mp4`), write the manifest `clip_id`, the proxy
-   fps (from `report.json` / `eval_strokes.py list`) and whether other people are visible.
+1. Choose the clip's `overlay.mp4` (or `proxy.mp4`), write the manifest `clip_id` (the page
+   asks to confirm it at every new video) and the proxy fps (from `report.json` /
+   `eval_strokes.py list`).
    On the overlay, the burned-in `#N` must equal the frame shown by the page; if it does
    not, the fps is wrong.
 2. Step with `←`/`→` (`Shift` = 10 frames). On the impact frame press `D` forehand, `R`

@@ -119,27 +119,22 @@ def test_header_and_missing_file(tmp_path: Path) -> None:
         load_annotated(tmp_path / "missing.csv")
 
 
-def test_coverage_rule_p2() -> None:
-    crowd = _clip(other_people=True)
-    alone = _clip(other_people=False)
-    full = coverage(_iv(0, 10), crowd)
+def test_coverage_rule_p2_revised() -> None:
+    full = coverage(_iv(0, 10))
     assert full.exhaustive and full.missing_types == () and full.missing_players is None
-    # A alone is enough only when the manifest says nobody else is in the clip.
-    a_only = _iv(0, 10, players="A")
-    assert not coverage(a_only, crowd).exhaustive
-    assert coverage(a_only, crowd).missing_players == "all_visible"
-    assert coverage(a_only, alone).exhaustive
-    assert coverage(_iv(0, 10, players="B"), alone).missing_players == "A"
-    # A;B is not all_visible: there may be a third person.
-    assert coverage(_iv(0, 10, players="A;B"), crowd).missing_players == "all_visible"
+    # Revised 2026-11-22: A alone is enough, other people or not (one tracked skeleton).
+    assert coverage(_iv(0, 10, players="A")).exhaustive
+    assert coverage(_iv(0, 10, players="A;B")).exhaustive
+    assert coverage(_iv(0, 10, players="B")).missing_players == "A"
+    assert not coverage(_iv(0, 10, players="B")).exhaustive
     # Today's M2.1 labels: forehands and backhands of A only.
-    current = coverage(_iv(0, 10, types="forehand;backhand", players="A"), crowd)
+    current = coverage(_iv(0, 10, types="forehand;backhand", players="A"))
     assert current.missing_types == (
         LabelStrokeType.SERVE,
         LabelStrokeType.VOLLEY,
         LabelStrokeType.OTHER,
     )
-    assert not current.exhaustive
+    assert current.missing_players is None and not current.exhaustive
 
 
 def test_cross_check_with_labels_and_manifest() -> None:
@@ -196,10 +191,7 @@ def test_cli_check_reads_annotated_csv(tmp_path: Path, capsys: pytest.CaptureFix
     )
     assert cli.main(args) == 0
     out = capsys.readouterr().out
-    assert (
-        "annotated.csv:2: c1 frames 0-59: NOT exhaustive, missing serve, volley, other, "
-        "players=all_visible" in out
-    )
+    assert "annotated.csv:2: c1 frames 0-59: NOT exhaustive, missing serve, volley, other\n" in out
     assert "annotated.csv:3: c1 frames 60-119: exhaustive" in out
     assert "2 annotated intervals" in out
 

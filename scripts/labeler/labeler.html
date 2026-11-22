@@ -165,13 +165,7 @@
         >fps del proxy
         <input id="fps" type="number" step="0.001" min="1" value="30" style="width: 90px" />
       </label>
-      <label title="Colonna other_people del MANIFEST: serve per dire se un intervallo è esaustivo"
-        >Altre persone nel video?
-        <select id="others">
-          <option value="yes">sì</option>
-          <option value="no">no</option>
-        </select>
-      </label>
+
       <label
         >Importa CSV esistenti
         <input id="import" type="file" accept=".csv,text/csv" multiple />
@@ -279,8 +273,8 @@
           <div class="row">
             <span>Giocatori annotati:</span>
             <select id="cov-players">
+              <option value="A">solo A (basta per l'esaustività)</option>
               <option value="all_visible">tutti quelli visibili</option>
-              <option value="A">solo A</option>
               <option value="A;B">A e B</option>
             </select>
           </div>
@@ -384,8 +378,8 @@
 
       /** state.labels: {clip_id, proxy_frame, stroke_type, player, visibility, overlay_wrist, notes}
        *  state.intervals: {clip_id, start_frame, end_frame, labelled_types[], players, notes}
-       *  state.others: {clip_id: 'yes' | 'no'} */
-      let state = { labels: [], intervals: [], others: {}, clip: '', fps: 30 }
+       */
+      let state = { labels: [], intervals: [], clip: '', fps: 30 }
       let player = 'A'
       let visibility = 'full'
       let pendingStart = null
@@ -405,7 +399,6 @@
         }
         $('clip').value = state.clip || ''
         $('fps').value = state.fps || 30
-        $('others').value = state.others[state.clip] || 'yes'
       }
 
       // ------------------------------------------------------------ frames
@@ -534,13 +527,10 @@
 
       function coverageOf(iv) {
         const missing = COVERAGE_TYPES.filter((t) => !iv.labelled_types.includes(t))
-        const others = (state.others[iv.clip_id] || 'yes') === 'yes'
+        // Revised P2 (2026-11-22): only the analysed player A must be covered. The skeleton
+        // tracks one person; another player's stroke is not a detector event.
         const listed = iv.players === 'all_visible' ? [] : iv.players.split(';')
-        let missingPlayers = null
-        if (iv.players !== 'all_visible') {
-          if (others) missingPlayers = 'tutti i visibili'
-          else if (!listed.includes('A')) missingPlayers = 'A'
-        }
+        const missingPlayers = iv.players === 'all_visible' || listed.includes('A') ? null : 'A'
         return { missing, missingPlayers, exhaustive: !missing.length && !missingPlayers }
       }
 
@@ -894,7 +884,6 @@
       video.addEventListener('timeupdate', renderFrame)
       $('clip').addEventListener('change', () => {
         state.clip = clipId()
-        $('others').value = state.others[state.clip] || 'yes'
         flash = ''
         save()
         render()
@@ -903,11 +892,6 @@
         state.fps = fps()
         save()
         renderFrame()
-      })
-      $('others').addEventListener('change', (e) => {
-        if (clipId()) state.others[clipId()] = e.target.value
-        save()
-        render()
       })
       $('rate').addEventListener('change', (e) => (video.playbackRate = Number(e.target.value)))
       $('play').addEventListener('click', () => (video.paused ? video.play() : video.pause()))

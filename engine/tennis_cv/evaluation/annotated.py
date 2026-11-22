@@ -199,27 +199,30 @@ class Coverage:
     missing_types: tuple[LabelStrokeType, ...]
     """Coverage types (forehand, backhand, serve, volley, other) not labelled."""
     missing_players: str | None
-    """None if players are covered; otherwise a short reason, e.g. ``all_visible``."""
+    """None if the analysed player is covered; otherwise ``A``."""
 
     @property
     def exhaustive(self) -> bool:
         return not self.missing_types and self.missing_players is None
 
 
-def coverage(interval: AnnotatedInterval, clip: ManifestClip) -> Coverage:
-    """Exhaustiveness of an interval (rule P2 of the M2.3 evaluation proposal).
+def coverage(interval: AnnotatedInterval) -> Coverage:
+    """Exhaustiveness of an interval (rule P2 of the M2.3 evaluation proposal, revised).
 
-    Exhaustive = all five coverage types labelled and ``players = all_visible``; ``A``
-    alone is enough only if the manifest says the clip has no other people. ``none``
-    labels never count.
+    Exhaustive = all five coverage types labelled and the analysed player ``A`` covered
+    (``A`` listed, or ``all_visible``). ``none`` labels never count.
+
+    Revision approved by Leonardo on 2026-11-22: other players are **not** required. The
+    pose estimator tracks one skeleton, the analysed player; another player's stroke can
+    only produce a detector event if the skeleton jumps onto that person, which is a
+    tracking error (overlay_wrist = other_person, or a jump visible in the pose), not an
+    unlabelled stroke. The first version required ``all_visible`` whenever the manifest
+    said ``other_people = yes``.
     """
     types = tuple(t for t in COVERAGE_TYPES if t not in interval.labelled_types)
     missing_players: str | None = None
-    if not interval.all_visible:
-        if clip.other_people:
-            missing_players = ALL_VISIBLE
-        elif ANALYSED_PLAYER not in interval.players:
-            missing_players = ANALYSED_PLAYER
+    if not interval.all_visible and ANALYSED_PLAYER not in interval.players:
+        missing_players = ANALYSED_PLAYER
     return Coverage(missing_types=types, missing_players=missing_players)
 
 

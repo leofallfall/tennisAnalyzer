@@ -209,7 +209,7 @@ def cmd_check(args: argparse.Namespace) -> int:
             )
         warnings.extend(iv_warnings)
         for iv in intervals:
-            cov = coverage(iv, clips[iv.clip_id])
+            cov = coverage(iv)
             missing = [t.value for t in cov.missing_types]
             if cov.missing_players is not None:
                 missing.append(f"players={cov.missing_players}")

@@ -82,6 +82,12 @@ from tennis_cv.signals.velocity import KeypointVelocity, VelocityState, keypoint
 
 FloatArray = npt.NDArray[np.float64]
 
+# Candidate minimum prominence chosen by the developer on Development A/B (2026-11-23,
+# docs/M2_3_PEAKS.md 6). Frozen for the single Control run; NOT applied in I1 (every peak
+# is returned) and not a validated threshold. Run-edge (one-sided) and internal
+# (two-sided) peaks are compared with it separately, never pooled.
+CANDIDATE_MIN_PROMINENCE_TORSO_PER_S = 2.0
+
 WRIST_KEYPOINT: dict[Side, str] = {"left": "left_wrist", "right": "right_wrist"}
 SIGNAL = "speed_2d_px_per_s"
 _EPS_S = 1e-9
@@ -91,6 +97,14 @@ class RunEdge(StrEnum):
     NONE = "none"
     START = "run_start"  # plateau touches the first sample of its run
     END = "run_end"  # plateau touches the last sample of its run
+
+
+class PeakCategory(StrEnum):
+    """Kept apart in every count (developer's decision, 2026-11-23): their prominences are
+    not equivalent."""
+
+    INTERNAL = "internal"  # two-sided prominence
+    RUN_EDGE = "run_edge"  # plateau at a run edge: one-sided, censored prominence
 
 
 class ProminenceSides(StrEnum):
@@ -169,6 +183,10 @@ class CandidatePeak:
     half_window_s: float
     quality_window: QualityCounts
     base_span_counts: QualityCounts
+
+    @property
+    def category(self) -> PeakCategory:
+        return PeakCategory.INTERNAL if self.run_edge is RunEdge.NONE else PeakCategory.RUN_EDGE
 
     @property
     def prominence_is_lower_bound(self) -> bool:

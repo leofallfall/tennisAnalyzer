@@ -1,8 +1,9 @@
 # M2.3 — Wrist speed peaks (intervention I1)
 
 Status (2026-11-23): **peak finding implemented and tested on synthetic signals; descriptive
-analysis on Development A and B only.** No minimum prominence is applied (the value is the
-developer's decision), no grouping, no event, no `strokes.json` output, no CLI, no pipeline
+analysis on Development A and B only.** The developer chose 2.0 torso lengths/s as the
+**candidate** minimum prominence for I2 (section 6), frozen for the single Control run; it is
+not applied in I1 code and is not a validated threshold. No grouping, no event, no `strokes.json` output, no CLI, no pipeline
 change. Control (img5098_full 4500–9470) was not read for any number. Every figure below
 describes one player's clips (ADR-018) and is **not** a validation.
 
@@ -61,6 +62,11 @@ For a peak of height *h* occupying the plateau *a…b*:
    M2.2 measured as much noisier.
 
 Equal-height samples do not stop the walk (only strictly higher ones do).
+
+**Two categories** (`CandidatePeak.category`, developer's decision 2026-11-23): `internal`
+(two-sided prominence) and `run_edge` (one-sided, censored at the run edge). Run-edge peaks
+are never dropped; because the two prominences are not equivalent, every count is reported
+per category and I2 must handle them separately.
 
 ## 4. Quality counts (windows from M2.2)
 
@@ -167,30 +173,81 @@ number. The other wrist also peaks close to the impact (|offset| P50 0.07–0.10
 rule A), as expected for a two-handed backhand and arm coordination. It does not identify
 the stroke side.
 
-## 6. Proposal for the minimum prominence (developer's decision)
+### 5.5 Why 19 of 53 targets have their most prominent peak at a run edge
 
-**Proposed: 2.0 torso lengths/s, applied to every peak (rule A), with run-edge peaks kept
-and flagged for I2/I3.**
+For each of the 19, the run-edge peak, the samples just after (or before) its run and the
+nearest internal peak at the candidate minimum were listed (Development A/B only). Three
+situations, read from the pose data (not checked on video):
 
-- It is the largest value tried at which no Development A/B target loses its last
-  expected-wrist peak. The margin is thin: the weakest target is at 2.04 (img5098_full 3777,
-  visibility `none`).
+| Situation | Targets | What the pose shows | Internal peak near the impact (min 2.0) |
+| --- | --- | --- | --- |
+| Visibility fades out of the usable range after (or before) the swing | 10: img4893 756, 853, 945, 1419, 1661; img5098_1 37; img5098_full 764, 1273, 3390, 3584 | the wrist is still detected, its visibility slides just below 0.4 (typically 0.39 → 0.35 → 0.32) while it is still moving fast; the run ends there, 0.4–1.0 s after the label (8 cases, follow-through) or 0.7 s before it (2 cases, preparation) | yes for all 10, at −0.13…+0.13 s |
+| Pose lost next to the impact (no pose for 7–64 samples) | 3: img5098_full 3191, 3683, 3958 (all visibility `none`) | the run ends because the pose disappears 0.2–0.5 s before the label | **none**: the run-edge peak is their only evidence |
+| The most prominent peak in a wide territory is another movement, 1.2–11.6 s from the label | 6: img5098_1 142, 1345; img4912_2min 1023; img4912_m3 700; img5098_full 1483, 3777 | unrelated motion at a run edge (pose lost in 4 of them) | within 0.10 s for 3 (img5098_1 142, 1345; img4912_2min 1023); farther for 2 (img5098_full 1483 at −0.50 s, img4912_m3 700 at +2.43 s); none for 3777 (its only peak ≥ 2.0 is the run-edge one at −1.23 s) |
+
+So the large one-sided prominences mostly come from the run being cut while the wrist is
+still fast: the last sample before the cut is a "maximum" only because the run ends, and its
+speed comes from a shifted (edge) fit. Their prominence measures the drop on one side only.
+In 13 of the 19 an internal peak lies within 0.13 s of the impact; in 3 (`none`
+visibility, pose lost) the run-edge peak is all there is. Why the visibility fades in the
+follow-through (motion blur, the arm crossing the body seen from behind, or both) cannot be
+told from the pose and was not checked on the video.
+
+### 5.6 Internal and run-edge peaks at the candidate minimum (2.0)
+
+| Category | Dev A kept / total | Dev B near kept / total (per min) | Dev B pause kept / total (per min) |
+| --- | --- | --- | --- |
+| internal | 765 / 2916 | 71 / 232 (51.9) | 12 / 102 (10.6) |
+| run edge | 424 / 936 | 58 / 104 (42.4) | 16 / 44 (14.1) |
+
+Nearest kept peak of the expected wrist for the 53 targets:
+
+| Category | Targets with a peak | Without | Offset P10 / P50 / P90 (s) | abs offset P50 / P90 (s) |
+| --- | --- | --- | --- | --- |
+| internal | 49 | 4 (img5098_full 3191, 3683, 3777, 3958, all `none`) | −0.13 / +0.03 / +0.15 | 0.10 / 0.26 |
+| run edge | 35 | 18 | −0.67 / +0.43 / +1.35 | 0.67 / 1.41 |
+
+Internal peaks sit at the impact (median one frame after it); run-edge peaks mostly follow
+it by about half a second. In the Development B pauses, run-edge peaks above the minimum are
+more frequent than internal ones (14.1 vs 10.6 per minute).
+
+## 6. Minimum prominence: candidate 2.0 (decided by the developer, 2026-11-23)
+
+**Decision:** 2.0 torso lengths/s is the candidate minimum for I2
+(`CANDIDATE_MIN_PROMINENCE_TORSO_PER_S`), **not** a validated threshold. It is frozen for the
+single Control run and will not be changed on the basis of Control results. Run-edge peaks
+are kept and identifiable (`category = run_edge`), counted apart from internal peaks; I2
+handles the two categories separately without excluding run-edge peaks in advance.
+
+Why this value (Development A/B):
+
+- It is the largest value tried at which no target loses every expected-wrist peak. The
+  margin is thin: the weakest target is at 2.04 (img5098_full 3777, visibility `none`).
 - It removes 69 % of Development A peaks, 62 % of the near peaks and 81 % of the pause peaks
-  of Development B (pause rate 129 → 24.7 per minute). It is close to the P90 of two-sided
-  pause peaks (2.13).
-- Above it, the targets lost first are those with visibility `none` or `partial`. At 3.0
-  (rule A) the pause rate falls to 15/min but three such targets lose every peak.
-- Rule B removes almost every pause peak above 4.3, but it drops four `none` targets already
-  at 1.0–2.0, because their only clear peak is a run-edge one. Whether run-edge peaks need a
-  separate rule is a question for I2/I3 (they keep the flags `run_edge`, `one_sided`,
-  `edge_fit`).
+  of Development B (pause rate 129 → 24.7 per minute, both categories). It is close to the
+  P90 of internal pause peaks (2.13).
+- At 3.0 the pause rate falls to 15/min but three `none`/`partial` targets lose every peak.
 
-Remaining peaks in pauses are expected. The minimum prominence only removes small maxima.
-Telling swings from other movements is the job of grouping and decisions (I2, I3).
+Remaining peaks in pauses are expected: the minimum prominence only removes small maxima;
+telling swings from other movements is the job of grouping and decisions (I2, I3).
 
-## 7. Not done in I1
+## 7. Control: single run with frozen algorithm and parameter
 
-- No minimum prominence applied in code, no `discarded` status, no `rel_to_clip` (its
+Protocol (Control = img5098_full 4500–9470, same session as Development B, ADR-023):
+
+1. Frozen before the run: the commit of `strokes/peaks.py` and the sha256 of it and of the
+   two analysis scripts, recorded with the data (`m2_3_peaks/FROZEN.md`).
+2. One run: `analisi_i1.py --control` then `report_i1.py --control`. Only the candidate
+   minimum is reported (no scan of other values), internal and run-edge peaks apart, with
+   the same definitions as Development (territory, near / pause, offsets).
+3. The results are reported as "Control (same session as Development B)" and are not used to
+   change the algorithm or the value.
+
+Status: **not run yet**; waits for the developer's go-ahead after the review of I1.
+
+## 8. Not done in I1
+
+- The candidate minimum is not applied in code (no `discarded` status), no `rel_to_clip` (its
   definition belongs with the relative thresholds of I3).
 - No conversion to `WristPeak` / `strokes.json` (I2), no grouping, no CLI, no pipeline change.
 - Control untouched: it is evaluated once with the frozen parameters (ADR-023).

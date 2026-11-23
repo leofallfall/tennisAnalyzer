@@ -442,6 +442,9 @@ create or move maxima; peaks without scale would vanish); drop run-edge maxima a
 (would hide the swings cut by visibility loss: 19 of 53 targets have their most prominent
 peak at a run edge); a minimum peak distance (an arbitrary threshold; prominence already
 separates close peaks); SciPy `find_peaks` (new dependency, edge maxima excluded).
-**Consequences:** with no minimum there are about 96–146 peaks per minute per wrist. The
-minimum prominence (proposal: 2.0 torso lengths/s on every peak, see docs/M2_3_PEAKS.md 6) and
-the treatment of run-edge peaks are decided by the developer before I2.
+**Consequences:** with no minimum there are about 96–146 peaks per minute per wrist. Decided
+by the developer (2026-11-23): 2.0 torso lengths/s is the **candidate** minimum prominence for
+I2, not a validated threshold (weakest Development target at 2.04); it is frozen for one
+Control run and not changed on Control results. Run-edge peaks are kept, identifiable
+(`category = run_edge`) and always counted apart from internal peaks; I2 handles the two
+categories separately without excluding run-edge peaks in advance.

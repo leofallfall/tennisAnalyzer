@@ -13,6 +13,7 @@ from tennis_cv.signals import build_timebase, keypoint_velocity, torso_scale
 from tennis_cv.signals.scale import ScaleState
 from tennis_cv.signals.velocity import VelocityState
 from tennis_cv.strokes.peaks import (
+    PeakCategory,
     Plateau,
     ProminenceSides,
     RunEdge,
@@ -157,7 +158,7 @@ def test_known_bell_gives_its_peak_frame_and_torso_values() -> None:
     big = max(res.peaks, key=lambda p: p.speed_px_per_s)
     assert big.sample.proxy_frame == 60
     assert big.velocity_state is VelocityState.VALID
-    assert big.run_edge is RunEdge.NONE
+    assert big.run_edge is RunEdge.NONE and big.category is PeakCategory.INTERNAL
     assert big.scale_state is ScaleState.OK
     assert big.torso_length_px == pytest.approx(200.0)
     assert big.speed_torso_per_s == pytest.approx(big.speed_px_per_s / 200.0)
@@ -189,6 +190,7 @@ def test_peaks_are_found_per_run_and_never_across_a_hole() -> None:
     for p in edges:
         assert p.velocity_state is VelocityState.EDGE
         assert p.prominence_sides is ProminenceSides.ONE_SIDED
+        assert p.category is PeakCategory.RUN_EDGE
         assert p.quality_window.missing > 0  # the symmetric window crosses the hole
 
 

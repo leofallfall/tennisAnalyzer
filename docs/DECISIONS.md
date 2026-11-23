@@ -420,3 +420,28 @@ of overfitting to the tuning strokes).
 reported as independent validation or generalisation; the ADR-021 confirmation video remains
 mandatory. No session/player identifier columns are added (session membership settled with the
 developer).
+
+### ADR-024 M2.3 I1: wrist peak definitions (2026-11-23)
+**Context:** I1 of the approved detector design (ADR-023). The developer asked for every
+local maximum of both wrists, per continuous run, with no height filter, and for precise
+rules on plateaus, close peaks, run edges, prominence and quality windows. The minimum
+prominence is the developer's decision, based on Development A/B only.
+**Decision (implemented, `strokes/peaks.py`, docs/M2_3_PEAKS.md):**
+- Maxima searched on `speed_2d_px_per_s` per M2.2 run; torso values = pixel value / torso
+  length at the peak (peaks without scale kept with `None`).
+- Plateau of exactly equal values; maximum when existing neighbours are strictly lower; peak
+  at the middle (left of the two middles). Run-edge plateaus are maxima, marked `run_edge`.
+  No merging, no minimum distance.
+- Topographic prominence bounded by the run (walk to the first strictly higher sample or the
+  run edge; base = lowest sample, closest on ties). Censored sides make it a lower bound;
+  run-edge peaks have a one-sided prominence, marked.
+- Quality: the exact M2.2 fit window, a symmetric window of the M2.2 fit half-width (0.1 s
+  at 30 fps) with GOOD/LOW/UNRELIABLE/MISSING/irregular counts, and the base span.
+**Alternatives:** search on `speed_2d_torso_per_s` (step changes of the 1 s median scale can
+create or move maxima; peaks without scale would vanish); drop run-edge maxima as SciPy does
+(would hide the swings cut by visibility loss: 19 of 53 targets have their most prominent
+peak at a run edge); a minimum peak distance (an arbitrary threshold; prominence already
+separates close peaks); SciPy `find_peaks` (new dependency, edge maxima excluded).
+**Consequences:** with no minimum there are about 96–146 peaks per minute per wrist. The
+minimum prominence (proposal: 2.0 torso lengths/s on every peak, see docs/M2_3_PEAKS.md 6) and
+the treatment of run-edge peaks are decided by the developer before I2.

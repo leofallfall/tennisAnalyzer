@@ -436,7 +436,12 @@ prominence is the developer's decision, based on Development A/B only.
   run edge; base = lowest sample, closest on ties). Censored sides make it a lower bound;
   run-edge peaks have a one-sided prominence, marked.
 - Quality: the exact M2.2 fit window, a symmetric window of the M2.2 fit half-width (0.1 s
-  at 30 fps) with GOOD/LOW/UNRELIABLE/MISSING/irregular counts, and the base span.
+  at 30 fps, real time), and the base span. In the symmetric window GOOD / LOW / UNRELIABLE
+  are exactly M2.2 `classify_quality`; UNRELIABLE is split into its causes `missing` (no
+  pose or keypoint absent), `non_finite` (keypoint present, coordinates not finite) and
+  `low_visibility` (valid coordinates, visibility insufficient, absent or not finite), which
+  are components of UNRELIABLE and add up to it, not extra classes; irregular intervals are
+  counted too.
 **Alternatives:** search on `speed_2d_torso_per_s` (step changes of the 1 s median scale can
 create or move maxima; peaks without scale would vanish); drop run-edge maxima as SciPy does
 (would hide the swings cut by visibility loss: 19 of 53 targets have their most prominent

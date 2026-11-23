@@ -53,14 +53,24 @@ report.
   will always run on the whole clip (it reads no labels); the split exists only in the
   evaluation, through the two label / interval pairs. An event within r of 4499/4500 is
   `near_boundary`, as for any interval edge.
-- **Not independent.** Development B and Control are one session. Development A very likely
-  contains the same session too (img5098_1: same lilac shirt as IMG_5098; M2.1 §9 counts 3
-  sessions: IMG_4893 + IMG_4894, IMG_5098 + IMG_5098_1, IMG_4912). Control therefore measures
-  unseen strokes in known conditions, not new conditions. The confirmation video of ADR-021
-  stays the only independent test. Session membership is inferred, not recorded (section 6).
+- **Not independent.** Development B and Control are two portions of **one session**, the
+  same recording img5098_full (see 2.1).
 - **Radius check.** Smallest D is 66 frames (2.2 s, Control) after the Q3 correction:
   `2r + W < D` needs W < 1.2 s at r = 0.5 s. Before the correction it was 35 frames
   (W < 0.17 s at r = 0.5 s).
+
+### 2.1 What Control measures, and what it does not
+
+- **Development** (A and B) is the only data used to look at signals, choose parameters and
+  thresholds (I1–I3), and fill review sheets.
+- **Control** (img5098_full 4500–9470) holds strokes never used in development, evaluated
+  once with frozen parameters. It measures how the detector behaves on **unseen events of the
+  same session** (same day, venue, light, camera position, clothing, player).
+- Control is **not** an independent validation and **not** evidence of generalisation: not to
+  a new session, other venues or cameras, other players. Its numbers are reported as
+  "Control (same session as Development B)", never as a test-set accuracy.
+- The independent check remains the ADR-021 confirmation video (new session, never used for
+  tuning, annotated end to end), required before M3.1.
 
 ## 3. Results of `eval_strokes.py check` (2026-11-23)
 
@@ -124,7 +134,8 @@ pose could not (the player is out of frame there).
 - No annotated intervals for Development A: unassociated events there are never judged
   automatically (`no_intervals`). Optional (Q9 of the design): declare intervals after
   checking that those clips contain no unlabelled volleys or serves (img4912_2min has serves).
-- No player identifier across clips and no session identifier (section 6).
+- No player or session identifier columns: the clips' session membership was settled with
+  the developer (2026-11-23) and needs no change in I0.
 
 ## 6. Requirements for a possible later ML classifier (documented, not implemented)
 
@@ -133,11 +144,11 @@ No model, no feature and no contract field is added now. Checked against what ex
 | Requirement | Already covered by | Gap | Proposal (needs approval) |
 | --- | --- | --- | --- |
 | Tell a real stroke from an irrelevant movement without forcing a class | labels (`stroke_type`, including `none`), review sheet categories (`preparation`, `recovery_finish`, `between_strokes`, `tracking_error`, `unlabelled_stroke`, `not_judgeable`) | no way to say "a gesture, type unclear" in `labels.csv` | allow `stroke_type = unknown` in labels (minor change of the label format and validator) |
-| Labels tied to a player and a session | `player` column (A/B) is per clip; manifest notes mention sessions in free text | no stable player id and no session id | add optional `session_id` and `player_id` columns to the manifest (parser in `evaluation/dataset.py`) |
+| Labels tied to a player and a session | `player` column (A/B) is per clip; manifest notes mention sessions in free text | no id columns | none for now: session membership settled with the developer (2026-11-23); revisit only if an ML dataset is built |
 | Detected events vs annotated swings not detected | `strokes_eval.json`: `intercepted*`, `missed` with cause, unassociated events | — | none |
 | Rebuild examples later (windows, signals) | `strokes.json`: input sha256, all parameters and `params_sha256`, frames and times of every peak and event, decision trace | signals are not stored, they are recomputed from `pose.json` + parameters | keep `pose.json` / `timemap.json` of every evaluated clip (hashes already recorded) |
 | Keep every peak of both wrists with its quality | `strokes.json` `wrist_peaks[]` (grouped and discarded, provenance, `quality_window`) | — | none |
-| Splits by session and player without leakage | split column in the manifest | session and player not recorded (see above); the current Control shares its session with development | split by `session_id` once recorded; the confirmation video as a new session |
+| Splits by session and player without leakage | split column in the manifest | the current Control shares its session with development (2.1) | the confirmation video as a new session |
 
 ## 7. Next step
 

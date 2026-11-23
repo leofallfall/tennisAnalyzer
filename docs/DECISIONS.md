@@ -415,7 +415,8 @@ judgement during tuning: M2.1 clips have no annotated intervals); split img5098_
 alternating rallies (more balanced, but neighbouring rallies share conditions even more and
 the rule is harder to audit); no held-out part at all until the confirmation video (no check
 of overfitting to the tuning strokes).
-**Consequences:** Control is the same session as Development B (and probably img5098_1), so it
-tests unseen strokes, not new conditions; the ADR-021 confirmation video remains mandatory.
-Session and player identifiers are not recorded in the manifest yet (proposal in
-docs/M2_3_DATASET.md §6, not approved).
+**Consequences:** Development B and Control are two portions of the same session
+(img5098_full): Control tests unseen strokes of that session, not new conditions, and is never
+reported as independent validation or generalisation; the ADR-021 confirmation video remains
+mandatory. No session/player identifier columns are added (session membership settled with the
+developer).

@@ -420,3 +420,40 @@ of overfitting to the tuning strokes).
 reported as independent validation or generalisation; the ADR-021 confirmation video remains
 mandatory. No session/player identifier columns are added (session membership settled with the
 developer).
+
+### ADR-024 M2.3 I1: wrist peak definitions (2026-11-23)
+**Context:** I1 of the approved detector design (ADR-023). The developer asked for every
+local maximum of both wrists, per continuous run, with no height filter, and for precise
+rules on plateaus, close peaks, run edges, prominence and quality windows. The minimum
+prominence is the developer's decision, based on Development A/B only.
+**Decision (implemented, `strokes/peaks.py`, docs/M2_3_PEAKS.md):**
+- Maxima searched on `speed_2d_px_per_s` per M2.2 run; torso values = pixel value / torso
+  length at the peak (peaks without scale kept with `None`).
+- Plateau of exactly equal values; maximum when existing neighbours are strictly lower; peak
+  at the middle (left of the two middles). Run-edge plateaus are maxima, marked `run_edge`.
+  No merging, no minimum distance.
+- Topographic prominence bounded by the run (walk to the first strictly higher sample or the
+  run edge; base = lowest sample, closest on ties). Censored sides make it a lower bound;
+  run-edge peaks have a one-sided prominence, marked.
+- Quality: the exact M2.2 fit window, a symmetric window of the M2.2 fit half-width (0.1 s
+  at 30 fps, real time), and the base span. In the symmetric window GOOD / LOW / UNRELIABLE
+  are exactly M2.2 `classify_quality`; UNRELIABLE is split into its causes `missing` (no
+  pose or keypoint absent), `non_finite` (keypoint present, coordinates not finite) and
+  `low_visibility` (valid coordinates, visibility insufficient, absent or not finite), which
+  are components of UNRELIABLE and add up to it, not extra classes; irregular intervals are
+  counted too.
+**Alternatives:** search on `speed_2d_torso_per_s` (step changes of the 1 s median scale can
+create or move maxima; peaks without scale would vanish); drop run-edge maxima as SciPy does
+(would hide the swings cut by visibility loss: 19 of 53 targets have their most prominent
+peak at a run edge); a minimum peak distance (an arbitrary threshold; prominence already
+separates close peaks); SciPy `find_peaks` (new dependency, edge maxima excluded).
+**Consequences:** with no minimum there are about 96–146 peaks per minute per wrist. Decided
+by the developer (2026-11-23): 2.0 torso lengths/s is the **candidate** minimum prominence for
+I2, not a validated threshold (weakest Development target at 2.04); it is frozen for one
+Control run and not changed on Control results. Run-edge peaks are kept, identifiable
+(`category = run_edge`) and always counted apart from internal peaks; I2 handles the two
+categories separately without excluding run-edge peaks in advance.
+**Outcome (2026-11-23):** Control run once with the frozen code (`f4bdc11`) and value;
+results in docs/M2_3_PEAKS.md §7 (internal peak for 19 of 26 targets, 13 of 14 `full`
+targets within 0.17 s; same session as Development B, not a validation). Nothing was changed
+on Control results. Closing I1 waits for the developer's review of PR #16.

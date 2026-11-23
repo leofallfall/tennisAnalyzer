@@ -393,3 +393,29 @@ the labels); forward-compatible readers that ignore unknown fields (silent loss)
 interval per clip in the manifest.
 **Consequences:** the M2.1 `compare` command reads only the minimal M2.1 event format, not
 1.0; PR 2 adds `evaluate`, which reads both. The detector itself is still not started.
+
+### ADR-023 M2.3 detector design and evaluation split (2026-11-23)
+**Context:** the M2.3 detector design (Claude Doc "M2.3 — Progettazione dello Stroke
+Detector") was approved by the developer on 2026-11-23. Thresholds must come from labelled
+data, so the labelled clips need a fixed split before any detector code. img5098 (22 s) turned
+out to be frames 5169–5848 of img5098_full.
+**Decision (approved, Q1):**
+- Deterministic rules on the M2.2 signals; peaks of both wrists; events are swing-compatible
+  movements, not impacts; no forehand/backhand and no contact time; `strokes.json` 1.0
+  unchanged; the representative-wrist choice is traced and never removes other peaks;
+  possible merges are flagged, never split automatically without a new decision; thresholds
+  chosen empirically; event detection, time quality and region observability kept separate.
+- Work in interventions I0 (data) → I1 (peaks) → I2 (events without thresholds) → I3
+  (thresholds and decisions) → I4 (conditional complementary rule), each approved separately.
+- Split: Development A = img4893, img4894, img5098_1, img4912_2min, img4912_m3;
+  Development B = img5098_full 0–4499; Control = img5098_full 4500–9470, run once with frozen
+  parameters; img5098 excluded (overlap). Files and counts: docs/M2_3_DATASET.md.
+**Alternatives:** tune on all M2.1 clips and test on img5098_full (no false-candidate
+judgement during tuning: M2.1 clips have no annotated intervals); split img5098_full by
+alternating rallies (more balanced, but neighbouring rallies share conditions even more and
+the rule is harder to audit); no held-out part at all until the confirmation video (no check
+of overfitting to the tuning strokes).
+**Consequences:** Control is the same session as Development B (and probably img5098_1), so it
+tests unseen strokes, not new conditions; the ADR-021 confirmation video remains mandatory.
+Session and player identifiers are not recorded in the manifest yet (proposal in
+docs/M2_3_DATASET.md §6, not approved).

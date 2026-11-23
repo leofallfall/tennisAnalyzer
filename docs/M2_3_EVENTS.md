@@ -1,6 +1,7 @@
-# M2.3 — Candidate events: the `strokes.json` 1.0 format
+# M2.3 — Candidate events: the `strokes.json` 1.x format
 
-Status (2026-11-22): **format, versioned reader, invariant checks and canonical writer
+Status (2026-11-23): **1.1 implemented and written by the experimental I2 detector**
+(section 9, ADR-026). Earlier status (2026-11-22): **format, versioned reader, invariant checks and canonical writer
 done (PR 1 of the M2.3 preparation, ADR-022). No detector writes this file yet**: the M2.3
 detector starts only after M2.2 and an explicit go. The evaluation (connected components
 per radius, annotated intervals, miss causes, `strokes_eval.json`) is PR 2, see
@@ -134,7 +135,7 @@ stale-input problem.
 - Peak detection, grouping, region states and decisions: the M2.3 detector (I1 peaks done;
   I2 onwards not started).
 
-## 8. Planned 1.1: `coverage` (ADR-025, implemented with I2, not yet in code)
+## 8. 1.1: `coverage` and peak prominence (ADR-025, implemented with I2)
 
 Events only describe what the detector found. To show *where it could not have found a
 stroke*, 1.1 adds one optional top-level field (a minor change, section 5):
@@ -162,3 +163,54 @@ stroke*, 1.1 adds one optional top-level field (a minor change, section 5):
 - Stretches where only one wrist is missing are not listed: a stroke can still be found on
   the other wrist, and events there carry their own regions. To be revisited only if real
   cases need it.
+
+Also in 1.1 (optional, `null` / absent = not recorded, so 1.0 files round-trip unchanged):
+
+- `wrist_peaks[].prominence`: `value`, `unit` (torso lengths/s, or px/s when the torso
+  scale is missing), `category` (`internal` / `run_edge`, ADR-024) and `lower_bound`
+  (the I1 walk reached a run edge: the true prominence may be larger).
+- `quality_window.non_finite` / `low_visibility`: the I1 split of `unreliable` samples by
+  cause (with `missing`, they sum to `unreliable`).
+- A 1.0 file must not carry 1.1 fields (invariant check `C:`); coverage stretches must not
+  end before they start and must be sorted without overlap.
+
+## 9. The I2 detector (experimental, ADR-026)
+
+Code: `engine/tennis_cv/strokes/detector.py` (pure library). Command line:
+
+```bash
+uv run python scripts/eval_strokes.py detect POSE_DIR            # -> POSE_DIR/strokes.json
+uv run python scripts/eval_strokes.py detect MANIFEST.md --results-dir DIR \
+    [--last-proxy-frame 4499]                                     # -> DIR/<clip_id>.strokes.json
+```
+
+Output = **candidate events, not validated strokes**. `producer.status = experimental`,
+`algorithm = tpa.stroke_detector`, `algorithm_version = 0.1.0-i2`.
+
+| step | rule (code in `rules`) | parameter (in `params`) |
+| --- | --- | --- |
+| Peaks | I1 peaks of both wrists, unchanged (docs/M2_3_PEAKS.md) | M2.2 signal params |
+| Discard | `peak_no_torso_scale`; `peak_below_min_prominence`: prominence < minimum, internal and run-edge alike (category stays visible) | `detector.min_prominence_torso_per_s` = **2.0, initial provisional** |
+| Grouping | `grouping_chain`: kept peaks of both wrists in time order; a new event when the gap to the previous peak is more than G | `grouping.g_s` = **0.3 s, provisional** |
+| Representative wrist | `representative_wrist`: the most prominent *internal* peak (ties: speed, earlier, left); `rep_only_run_edge_peaks`: only run-edge peaks → `undetermined`, no reference time | — |
+| Regions | torso (shoulders + hips), each wrist, legs (knees + ankles): worst keypoint per sample, over the event window ± the M2.2 fit half-window (0.1 s) | — |
+| Uncertain (observability only) | `uncertain_wrist_undetermined`; `uncertain_possible_merge` (span > max single span, never split); `uncertain_no_mostly_good_peak` (no peak with GOOD > half of its window); `uncertain_irregular_interval` (in the representative peak window); `uncertain_region_not_observable` (a region used) | `grouping.max_single_span_s` = **1.0 s, provisional** |
+| Decision | `decision`: `accepted` unless an uncertain rule failed. **No `rejected` in I2**: height thresholds come with the three-state rules (V1 step 2) | — |
+| Info | `info_time_basis_proxy`: no usable time map, times are proxy times | — |
+| Coverage | samples where neither wrist has a speed value or the torso scale is missing, in stretches ≥ `min_duration_s`; regions = wrists and/or torso; reasons `no_pose`, `below_threshold`, `broken_run` (usable samples in a run too short for the fit) | `coverage.min_duration_s` = 0.3 s |
+
+- Region states: `not_observable` when no sample is GOOD or LOW; `good` when every sample is
+  GOOD and no interval is irregular; otherwise `low_but_usable`. Sample counts: `missing`
+  is a subset of `unreliable`. Reliability = worst region among torso and the wrists that
+  have peaks; regions not used (e.g. legs) never change the decision.
+- Times written in the file are rounded once to 4 decimals before grouping, so the
+  in-memory document and the written one satisfy the same invariants.
+- `--last-proxy-frame` (recorded as `params.input.last_proxy_frame`): signals are computed
+  on the whole file (the time map needs it) and nothing after the frame is written, as I1
+  did for data splits. Development B uses 4499, so the Control part of img5098_full is
+  never written.
+- G was chosen on Development A/B only (ADR-026): gaps between consecutive kept peaks within
+  ±0.5 s of a target label (same gesture) p50 0.17 s, p90 0.27 s, p95 0.33 s, max 0.57 s;
+  gap between the peaks of consecutive labels min 0.57 s, p5 0.62 s, p10 0.94 s. Both
+  distributions are contaminated (peaks near a label are not all of the stroke) and they
+  touch at 0.57 s: G separates most, not all, cases.

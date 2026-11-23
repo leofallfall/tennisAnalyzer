@@ -73,7 +73,7 @@ def _violations(d: Doc) -> list[str]:
 def test_example_is_valid_and_canonical(raw: Doc) -> None:
     text = EXAMPLE.read_text(encoding="utf-8")
     doc = parse_strokes(text)
-    assert doc.schema_version == SCHEMA_VERSION
+    assert doc.schema_version == "1.0" and SCHEMA_VERSION == "1.1"  # 1.0 is still read
     assert check_invariants(doc) == []
     assert dump_strokes(doc) == text  # byte-identical round trip
     assert load_strokes(EXAMPLE) == doc
@@ -119,7 +119,7 @@ def test_writer_refuses_invalid_document(raw: Doc) -> None:
 @pytest.mark.parametrize(
     ("version", "error", "code"),
     [
-        ("1.1", StrokesSchemaTooNewError, "strokes_schema_too_new"),
+        ("1.2", StrokesSchemaTooNewError, "strokes_schema_too_new"),
         ("2.0", StrokesSchemaUnsupportedError, "strokes_schema_unsupported"),
         ("1", StrokesSchemaUnsupportedError, "strokes_schema_unsupported"),
         (None, StrokesSchemaUnsupportedError, "strokes_schema_unsupported"),
@@ -142,9 +142,72 @@ def test_other_schema_name_is_unsupported(raw: Doc) -> None:
 
 
 def test_newer_reader_reads_older_minor(raw: Doc) -> None:
-    # a 1.1 reader (simulated) still reads 1.0 files: backward compatibility only
-    doc = parse_strokes(_text(raw), supported_minor=1)
+    # the 1.1 reader (and a simulated 1.2 one) still reads 1.0 files: backward only
+    assert parse_strokes(_text(raw)).schema_version == "1.0"
+    doc = parse_strokes(_text(raw), supported_minor=2)
     assert doc.schema_version == "1.0"
+    assert doc.coverage is None and all(p.prominence is None for p in doc.wrist_peaks)
+
+
+def test_old_reader_refuses_a_1_1_file(raw: Doc) -> None:
+    raw["schema_version"] = "1.1"
+    with pytest.raises(StrokesSchemaTooNewError):
+        parse_strokes(_text(raw), supported_minor=0)
+
+
+def _v11(raw: Doc) -> Doc:
+    d = copy.deepcopy(raw)
+    d["schema_version"] = "1.1"
+    d["coverage"] = {
+        "min_duration_s": 0.3,
+        "not_assessable": [
+            {"start_proxy_frame": 300, "end_proxy_frame": 330, "start_t_s": 10.0,
+             "end_t_s": 11.0, "regions": ["left_wrist", "right_wrist"], "reasons": ["no_pose"]},
+            {"start_proxy_frame": 400, "end_proxy_frame": 420, "start_t_s": 13.3333,
+             "end_t_s": 14.0, "regions": ["torso"], "reasons": ["below_threshold"]},
+        ],
+    }  # fmt: skip
+    p = d["wrist_peaks"][0]
+    p["prominence"] = {"value": 3.2, "unit": "torso_lengths_per_s", "category": "run_edge",
+                       "lower_bound": False}  # fmt: skip
+    p["quality_window"]["non_finite"] = 0
+    p["quality_window"]["low_visibility"] = (
+        p["quality_window"]["unreliable"] - p["quality_window"]["missing"]
+    )
+    return d
+
+
+def test_1_1_fields_are_read_and_written_back(raw: Doc) -> None:
+    d = _v11(raw)
+    doc = parse_strokes(_text(d))
+    assert doc.coverage is not None and len(doc.coverage.not_assessable) == 2
+    text = dump_strokes(doc)
+    assert '"coverage"' in text and '"prominence"' in text
+    assert dump_strokes(parse_strokes(text)) == text
+
+
+def test_1_0_document_is_written_back_without_1_1_keys(raw: Doc) -> None:
+    text = dump_strokes(parse_strokes(_text(raw)))
+    assert '"coverage"' not in text and '"prominence"' not in text
+
+
+def test_1_1_fields_in_a_1_0_file_are_refused(raw: Doc) -> None:
+    d = _v11(raw)
+    d["schema_version"] = "1.0"
+    with pytest.raises(StrokesInvariantError):
+        parse_strokes(_text(d))
+
+
+def test_coverage_stretches_must_be_ordered_and_disjoint(raw: Doc) -> None:
+    d = _v11(raw)
+    d["coverage"]["not_assessable"].reverse()
+    with pytest.raises(StrokesInvariantError):
+        parse_strokes(_text(d))
+    d = _v11(raw)
+    st = d["coverage"]["not_assessable"][0]
+    st["end_proxy_frame"], st["end_t_s"] = 200, 5.0
+    with pytest.raises(StrokesInvariantError):
+        parse_strokes(_text(d))
 
 
 def test_unknown_fields_are_rejected_never_ignored(raw: Doc) -> None:

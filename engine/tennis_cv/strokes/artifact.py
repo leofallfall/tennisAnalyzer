@@ -1,9 +1,10 @@
-"""``strokes.json`` 1.0: the versioned artifact of candidate stroke events (M2.3).
+"""``strokes.json`` 1.1: the versioned artifact of candidate stroke events (M2.3).
 
-Status: FORMAT ONLY. No detector writes this file yet; the models, the versioned reader,
-the invariant checks and the canonical writer are ready so that the M2.3 detector and the
-evaluation tool can be built against a fixed contract. See docs/M2_3_EVENTS.md and
-ADR-022.
+Written by the M2.3 detector (``strokes.detector``, I2, experimental). 1.1 adds optional
+fields only (ADR-025): top-level ``coverage`` (stretches where no stroke could have been
+found), each peak's ``prominence`` (value, internal / run-edge category) and the causes of
+UNRELIABLE samples in a peak's quality window. Files 1.0 are still read. See
+docs/M2_3_EVENTS.md, ADR-022 and ADR-025.
 
 Three levels, kept apart
 ------------------------
@@ -60,7 +61,7 @@ from tennis_cv.signals.velocity import VelocityState
 
 SCHEMA_NAME = "tpa.strokes"
 SCHEMA_MAJOR = 1
-SCHEMA_MINOR = 0
+SCHEMA_MINOR = 1
 SCHEMA_VERSION = f"{SCHEMA_MAJOR}.{SCHEMA_MINOR}"
 
 DECIMALS = 4
@@ -308,12 +309,34 @@ class Provenance(_Model):
 
 
 class QualityWindow(_Model):
+    """Samples within ``half_window_s`` of the peak. ``good`` / ``low_but_usable`` /
+    ``unreliable`` are M2.2 ``classify_quality``. ``missing`` (no pose or keypoint absent),
+    ``non_finite`` and ``low_visibility`` are the causes of ``unreliable`` (1.1 producers:
+    they add up to it; ``None`` = cause not recorded)."""
+
     half_window_s: Rounded = Field(gt=0)
     good: int = Field(ge=0)
     low_but_usable: int = Field(ge=0)
     unreliable: int = Field(ge=0)
     missing: int = Field(ge=0)
     irregular_intervals: int = Field(ge=0)
+    non_finite: int | None = Field(default=None, ge=0, description="1.1, optional")
+    low_visibility: int | None = Field(default=None, ge=0, description="1.1, optional")
+
+
+class PeakCategoryValue(StrEnum):
+    INTERNAL = "internal"  # two-sided prominence
+    RUN_EDGE = "run_edge"  # plateau at a run edge: one-sided, censored prominence
+
+
+class PeakProminence(_Model):
+    """1.1, optional. How far the peak stands out from the dips around it, inside its run
+    (docs/M2_3_PEAKS.md). Internal and run-edge prominences are not equivalent."""
+
+    value: Rounded = Field(ge=0)
+    unit: str = Field(min_length=1)
+    category: PeakCategoryValue
+    lower_bound: bool = Field(description="A side reached the run edge: true value >= value")
 
 
 class WristPeak(_Model):
@@ -327,6 +350,7 @@ class WristPeak(_Model):
     status: PeakStatus
     reasons: list[str] = Field(default_factory=list)
     event_id: str | None = None
+    prominence: PeakProminence | None = Field(default=None, description="1.1, optional")
 
 
 # --------------------------------------------------------------------------- events
@@ -450,6 +474,28 @@ class CandidateEvent(_Model):
     trace: list[TraceStep] = Field(min_length=1)
 
 
+# --------------------------------------------------------------------------- coverage
+
+
+class CoverageStretch(_Model):
+    """A stretch where no stroke could have been detected: insufficient evidence, NOT
+    absence of strokes."""
+
+    start_proxy_frame: int = Field(ge=0)
+    end_proxy_frame: int = Field(ge=0)
+    start_t_s: Rounded = Field(ge=0)
+    end_t_s: Rounded = Field(ge=0)
+    regions: list[RegionName] = Field(min_length=1)
+    reasons: list[RegionReason] = Field(min_length=1)
+
+
+class Coverage(_Model):
+    """1.1 (ADR-025, docs/M2_3_EVENTS.md 8)."""
+
+    min_duration_s: Rounded = Field(gt=0)
+    not_assessable: list[CoverageStretch]
+
+
 # --------------------------------------------------------------------------- file
 
 
@@ -469,6 +515,9 @@ class StrokesFile(_Model):
     rules: list[Rule]
     wrist_peaks: list[WristPeak]
     events: list[CandidateEvent]
+    coverage: Coverage | None = Field(
+        default=None, description="1.1, optional; null = not recorded (every 1.0 file)"
+    )
 
 
 # --------------------------------------------------------------------------- hashes
@@ -743,7 +792,30 @@ def check_invariants(doc: StrokesFile) -> list[str]:
         problems += [f"I{n}: {msg}" for msg in check(doc)]
     if params_sha256(doc.params) != doc.params_sha256:
         problems.append("P: params_sha256 does not match params")
+    problems += [f"C: {msg}" for msg in _check_coverage(doc)]
     return problems
+
+
+def _check_coverage(doc: StrokesFile) -> list[str]:
+    """1.1 fields only in 1.1+ files; coverage stretches ordered, not overlapping."""
+    out: list[str] = []
+    m = _VERSION.match(doc.schema_version)
+    minor = int(m.group(2)) if m else 0
+    if minor < 1:
+        if doc.coverage is not None:
+            out.append("coverage needs schema_version 1.1 or later")
+        if any(p.prominence is not None for p in doc.wrist_peaks):
+            out.append("peak prominence needs schema_version 1.1 or later")
+    if doc.coverage is None:
+        return out
+    prev_end: float | None = None
+    for i, st in enumerate(doc.coverage.not_assessable):
+        if st.end_proxy_frame < st.start_proxy_frame or st.end_t_s + _TOL < st.start_t_s:
+            out.append(f"coverage stretch {i}: ends before it starts")
+        if prev_end is not None and st.start_t_s <= prev_end + _TOL:
+            out.append(f"coverage stretch {i}: not after the previous one (sorted, no overlap)")
+        prev_end = st.end_t_s
+    return out
 
 
 # --------------------------------------------------------------------------- read / write
@@ -822,6 +894,16 @@ def to_canonical_dict(doc: StrokesFile, *, include_created_at: bool = True) -> d
     data["rules"] = sorted(data["rules"], key=lambda r: r["code"])
     data["wrist_peaks"] = sorted(data["wrist_peaks"], key=lambda p: (p["t_s"], p["id"]))
     data["events"] = sorted(data["events"], key=lambda e: (e["time"]["window_t_s"][0], e["id"]))
+    # optional 1.1 fields that are not recorded are left out, so a 1.0 document is
+    # written back exactly as it was read
+    if data.get("coverage") is None:
+        data.pop("coverage", None)
+    for p in data["wrist_peaks"]:
+        if p.get("prominence") is None:
+            p.pop("prominence", None)
+        for k in ("non_finite", "low_visibility"):
+            if p["quality_window"].get(k) is None:
+                p["quality_window"].pop(k, None)
     if not include_created_at:
         del data["created_at"]
     return data

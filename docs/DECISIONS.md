@@ -516,3 +516,61 @@ risk of fitting it; the first-measure rule and the multi-case rule limit it. A s
 by the user inside a *not assessable* stretch is a missed stroke with a known cause (input),
 distinct from a miss inside an observable stretch (algorithm). One player only: nothing is
 known about generalisation.
+
+### ADR-026 M2.3 I2: peaks grouped into candidate events (2026-11-23)
+
+**Context:** V1 step 1 (ADR-025): group the I1 peaks into possible strokes and write
+`strokes.json` 1.1 with `coverage`, with the minimum prominence 2.0 as an initial provisional
+parameter. Design approved on 2026-11-23 (I0–I4 doc): chain grouping, representative wrist,
+regions, uncertainty for observability only, no automatic split.
+**Decision:**
+- **Detector** `tennis_cv.strokes.detector` (pure library, NumPy only) + `eval_strokes.py
+  detect`; rules and parameters in docs/M2_3_EVENTS.md §9. Output is `experimental`.
+- **Discard** peaks without torso scale or with prominence < 2.0 torso lengths/s; internal
+  and run-edge peaks follow the same rule and stay distinguishable (`prominence.category`,
+  `lower_bound`).
+- **G = 0.3 s (provisional)**, chosen on Development A/B only, from two inputs:
+  (1) gaps between consecutive kept peaks within ±0.5 s of a target label p95 0.33 s vs gaps
+  between consecutive labels' peaks min 0.57 s; (2) sensitivity at radius 0.3 s on the 53
+  target impacts (Development A 29 + B 24):
+
+  | G (s) | intercepted (accepted + uncertain) | missed | ambiguous | radius check ok |
+  | --- | --- | --- | --- | --- |
+  | 0.2 | 34 | 4 | 15 | 6/6 clips |
+  | 0.25 | 41 | 5 | 7 | 6/6 |
+  | **0.3** | **44** | 7 | 2 | 6/6 |
+  | 0.35 | 43 | 8 | 2 | 6/6 |
+  | 0.4 | 43 | 9 | 1 | 6/6 |
+  | 0.5 | 44 | 9 | 0 | 4/6 |
+  | 0.8 | 40 | 13 | 0 | 0/6 |
+
+  Smaller G splits one gesture into several events (ambiguous); larger G joins strokes with
+  nearby movement (misses, longer events, radius check fails). 2 r_max + G < D holds (D ≥
+  2.2 s). It satisfies the I0 constraint G < 1.2 s.
+- **Representative wrist** = most prominent internal peak; only run-edge peaks →
+  `undetermined` (one-sided prominences are lower bounds, not comparable).
+- **Uncertain only for observability** (wrist undetermined, chain span > 1.0 s provisional,
+  no peak with a mostly GOOD window, irregular interval at the representative peak, a used
+  region not observable). No `rejected` in I2: the three-state rules are V1 step 2.
+- **possible_merge = span > `max_single_span_s` (1.0 s, provisional)**, not span > G: with
+  chaining most real strokes span more than G (span within ±0.5 s of a label p50 0.45 s,
+  max 0.8 s), so span > G would flag nearly every stroke.
+- **Data splits:** `--last-proxy-frame` writes nothing after a frame; Development B runs with
+  4499, so nothing of Control is written or evaluated.
+**First results (Development A/B, radius 0.3 s, descriptive, not validation):** Development
+A 24/29 intercepted (22 accepted, 2 uncertain), 4 missed, 1 ambiguous; Development B 20/24
+(17 accepted, 3 uncertain), 3 missed (causes: no pose 1, peak discarded 1, event outside the
+radius 1), 1 ambiguous; Development B has 91 events in 150 s, 69 not associated with any
+label (false-candidate volume, review sheet not filled yet). These are the data G was chosen
+on: they are an upper bound, not an estimate on new videos.
+**Process note:** a first exploratory G sweep ran the detector on the whole img5098_full file,
+Control frames included (event totals only, no Control labels read, no per-event output
+looked at); it was discarded and repeated with the Dev B cut. The label-based numbers above
+come only from the repeated sweep and are identical to the first one (labels stop at 4499).
+**Alternatives:** G from the gap distribution alone (0.33–0.57 s range, more misses);
+window-based grouping (overlapping windows, rejected in the design); automatic chain split
+at two separated maxima (no data to tune it); representative peak = fastest peak (run-edge
+peaks would win on noise); `rejected` already in I2 (thresholds belong to step 2).
+**Consequences:** many candidate events in pauses and between strokes (Development B: 69 of
+91 unassociated) until the three-state rules; 2.0, G 0.3 and 1.0 may change after real use
+(ADR-025 multi-case rule). One player only.

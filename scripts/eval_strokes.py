@@ -12,12 +12,24 @@ Usage:
     uv run python scripts/eval_strokes.py compare MANIFEST LABELS
         [--results-dir DIR] [--tolerance-s 0.25] [--targets forehand,backhand]
         [--out REPORT.md] [--json DATA.json]
+    uv run python scripts/eval_strokes.py detect POSE_DIR [--out STROKES.json] [--g-s 0.3]
+        [--last-proxy-frame N]
+    uv run python scripts/eval_strokes.py detect MANIFEST --results-dir DIR [--g-s 0.3]
+        [--last-proxy-frame N]
     uv run python scripts/eval_strokes.py validate-strokes STROKES [--inputs DIR | --no-inputs]
     uv run python scripts/eval_strokes.py evaluate MANIFEST LABELS --out STROKES_EVAL.json
         [--annotated ANNOTATED.csv] [--results-dir DIR] [--radii 0.1,0.2,0.3,0.5]
         [--targets forehand,backhand] [--outside-search-s 2.0] [--no-input-hashes]
     uv run python scripts/eval_strokes.py report STROKES_EVAL.json MANIFEST --out REPORT.md
         [--results-dir DIR] [--json DATA.json] [--review-csv SHEET.csv] [--review-in FILLED.csv]
+
+``detect`` runs the experimental M2.3 detector (I2, docs/M2_3_EVENTS.md section 9) on
+POSE_DIR (pose.json + timemap.json when present) and writes POSE_DIR/strokes.json, or
+--out; given a MANIFEST.md it writes DIR/<clip_id>.strokes.json for every clip, the layout
+``evaluate --results-dir`` reads. Output is candidate events, not validated strokes.
+``--g-s`` overrides the grouping gap G (exploration only; it is recorded in the file).
+``--last-proxy-frame`` writes nothing after that frame (Development B stops at 4499:
+the Control part of img5098_full is never written).
 
 ``validate-strokes`` checks a strokes.json 1.x file: version, schema, the eight invariants
 and (unless --no-inputs) the sha256 of pose.json / timemap.json in DIR (default: the
@@ -100,7 +112,8 @@ from tennis_cv.evaluation.visibility import (
     DEFAULT_WINDOW_S,
     analyse_impacts,
 )
-from tennis_cv.strokes.artifact import check_inputs, load_strokes
+from tennis_cv.strokes.artifact import check_inputs, dump_strokes, load_strokes
+from tennis_cv.strokes.detector import DetectorParams, detect_dir
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = ROOT / "tests" / "fixtures" / "real"
@@ -353,6 +366,44 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
+def _detect_one(pose_dir: Path, out: Path, params: DetectorParams, last: int | None) -> None:
+    doc = detect_dir(pose_dir, params, last_proxy_frame=last)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(dump_strokes(doc), encoding="utf-8")
+    statuses: dict[str, int] = {}
+    for e in doc.events:
+        statuses[e.status.value] = statuses.get(e.status.value, 0) + 1
+    stretches = doc.coverage.not_assessable if doc.coverage else []
+    print(
+        f"{out}: {len(doc.wrist_peaks)} wrist peaks, {len(doc.events)} candidate events ("
+        + (", ".join(f"{k} {v}" for k, v in sorted(statuses.items())) or "none")
+        + f"), {len(stretches)} not-assessable stretches"
+    )
+
+
+def cmd_detect(args: argparse.Namespace) -> int:
+    params = DetectorParams() if args.g_s is None else DetectorParams(g_s=args.g_s)
+    if args.target.is_dir():
+        _detect_one(
+            args.target, args.out or args.target / STROKES_FILE, params, args.last_proxy_frame
+        )
+        return 0
+    if args.results_dir is None:
+        print("ERROR a MANIFEST needs --results-dir", file=sys.stderr)
+        return 1
+    if args.out is not None:
+        print("ERROR --out is for one POSE_DIR; use --results-dir with a MANIFEST", file=sys.stderr)
+        return 1
+    for clip in load_manifest(args.target):
+        _detect_one(
+            clip.pose_dir,
+            args.results_dir / f"{clip.clip_id}.strokes.json",
+            params,
+            args.last_proxy_frame,
+        )
+    return 0
+
+
 def cmd_validate_strokes(args: argparse.Namespace) -> int:
     doc = load_strokes(args.strokes)
     stale: list[str] = []
@@ -522,6 +573,21 @@ def main(argv: list[str] | None = None) -> int:
             s.add_argument("--results-dir", type=Path, default=None)
             s.add_argument("--tolerance-s", type=float, default=DEFAULT_TOLERANCE_S)
             s.add_argument("--targets", default=",".join(sorted(t.value for t in DEFAULT_TARGETS)))
+
+    s = sub.add_parser("detect", help="experimental M2.3 detector: write strokes.json")
+    s.add_argument("target", type=Path, help="a POSE_DIR, or a MANIFEST.md with --results-dir")
+    s.add_argument("--out", type=Path, default=None, help="strokes.json to write (POSE_DIR)")
+    s.add_argument(
+        "--results-dir", type=Path, default=None, help="folder for <clip_id>.strokes.json"
+    )
+    s.add_argument("--g-s", type=_search_arg, default=None, help="grouping gap G (exploration)")
+    s.add_argument(
+        "--last-proxy-frame",
+        type=int,
+        default=None,
+        help="write nothing after this frame (data splits, e.g. Development B: 4499)",
+    )
+    s.set_defaults(func=cmd_detect)
 
     s = sub.add_parser("validate-strokes", help="check a strokes.json 1.x file")
     s.add_argument("strokes", type=Path)

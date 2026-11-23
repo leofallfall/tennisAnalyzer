@@ -577,3 +577,31 @@ peaks would win on noise); `rejected` already in I2 (thresholds belong to step 2
 **Consequences:** many candidate events in pauses and between strokes (Development B: 69 of
 91 unassociated) until the three-state rules; 2.0, G 0.3 and 1.0 may change after real use
 (ADR-025 multi-case rule). One player only.
+
+### ADR-027 Personal V1 step 2: provisional rules for the three states (2026-11-24)
+
+**Context:** ADR-025 step 2: every possible stroke gets a state (*colpo segnalato* / *da
+verificare* / *non valutabile*) and a reason in words, with rules chosen on Development A/B
+only. Design (I3): height relative to the clip, `T_reject` / `T_accept` chosen by the
+developer on a sensitivity table; observability rules from I2 unchanged.
+**Decision:**
+- `rel_to_clip` = peak speed / 90th percentile of the clip's kept peak speeds; the most stable
+  of three definitions across Development clips (docs/M2_3_EVENTS.md §10).
+- Height peak = representative peak, or the fastest peak when the wrist is undetermined.
+  `rel_to_clip < t_reject` → `rejected`; `< t_accept` → `uncertain`; fewer than 10 kept peaks
+  in the clip → `uncertain` (no reference). Provisional values **t_reject 0.45, t_accept 0.7**,
+  proposed for the developer's confirmation: no Development target stroke falls below 0.56.
+- States are a read-only view (`tennis_cv.strokes.states`): accepted → *colpo segnalato*,
+  uncertain → *da verificare* with reasons, rejected → *scartato* (hidden, shown on request),
+  coverage stretch → *non valutabile* ("evidenze insufficienti, non assenza di colpi"). Reasons
+  in Italian words, no percentages or scores. Codes stay the stable identifiers.
+- G 0.3 s, the 1.0 s chain rule, the minimum prominence 2.0 and the schema are unchanged.
+- The regression report on Control (ADR-025) runs once, after the values are confirmed, and
+  never changes them.
+**Alternatives:** absolute speed thresholds (amplitude varies up to 2x with tracking);
+rel_to_clip from the median (less stable across clips) or from prominence (least stable);
+one threshold only (no "to check" band; every borderline stroke would be lost or flagged);
+reason texts in the web app (the CLI and later the API need them too).
+**Consequences:** the reference depends on the clip's composition (many pauses lower the
+90th percentile); short clips get no height judgement. Values are fitted on the data they are
+reported on: an upper bound, one player only.

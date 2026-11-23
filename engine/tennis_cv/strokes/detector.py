@@ -133,7 +133,7 @@ def _t(p: _Peak) -> float:
 
 
 ALGORITHM = "tpa.stroke_detector"
-ALGORITHM_VERSION = "0.1.0-i2"
+ALGORITHM_VERSION = "0.2.0-v1s2"
 TORSO_KEYPOINTS = ("left_shoulder", "right_shoulder", "left_hip", "right_hip")
 LEG_KEYPOINTS = ("left_knee", "right_knee", "left_ankle", "right_ankle")
 _IRREGULAR = (IntervalStatus.LONG, IntervalStatus.SHORT, IntervalStatus.INVALID)
@@ -157,6 +157,9 @@ R_LOW = "uncertain_no_mostly_good_peak"
 R_IRREGULAR = "uncertain_irregular_interval"
 R_NOT_OBSERVABLE = "uncertain_region_not_observable"
 R_PROXY = "info_time_basis_proxy"
+R_HEIGHT_REJECT = "reject_low_relative_height"
+R_HEIGHT_UNCERTAIN = "uncertain_low_relative_height"
+R_NO_CLIP_REF = "uncertain_no_clip_reference"
 
 RULES: tuple[Rule, ...] = (
     Rule(code=R_NO_SCALE, kind=RuleKind.DISCARD_PEAK,
@@ -173,6 +176,16 @@ RULES: tuple[Rule, ...] = (
     Rule(code=R_REP_ONLY_EDGE, kind=RuleKind.REPRESENTATIVE_WRIST,
          description="Only run-edge peaks (one-sided prominence): wrist not determined, the "
                      "event is a window"),
+    Rule(code=R_HEIGHT_REJECT, kind=RuleKind.REJECT,
+         description="Height peak (representative, or highest when the wrist is "
+                     "undetermined) below decision.t_reject times the clip reference "
+                     "(rel_to_clip); provisional, chosen on Development A/B"),
+    Rule(code=R_HEIGHT_UNCERTAIN, kind=RuleKind.UNCERTAIN,
+         description="Height peak below decision.t_accept times the clip reference "
+                     "(rel_to_clip); provisional, chosen on Development A/B"),
+    Rule(code=R_NO_CLIP_REF, kind=RuleKind.UNCERTAIN,
+         description="Too few kept peaks in the clip for a reference height: the event "
+                     "height cannot be compared"),
     Rule(code=R_UNDETERMINED, kind=RuleKind.UNCERTAIN,
          description="Representative wrist undetermined: no reference time"),
     Rule(code=R_MERGE, kind=RuleKind.UNCERTAIN,
@@ -188,7 +201,8 @@ RULES: tuple[Rule, ...] = (
     Rule(code=R_PROXY, kind=RuleKind.INFO,
          description="No usable time map: times are proxy times, not verified"),
     Rule(code=DECISION_RULE, kind=RuleKind.DECISION,
-         description="accepted unless an uncertain rule failed (I2: no rejection rule yet)"),
+         description="rejected if the height reject rule failed; otherwise uncertain if an "
+                     "uncertain rule failed; otherwise accepted"),
 )  # fmt: skip
 
 
@@ -200,6 +214,10 @@ class DetectorParams:
     g_s: float = 0.3
     max_single_span_s: float = 1.0
     coverage_min_duration_s: float = 0.3
+    rel_percentile: float = 90.0
+    min_kept_peaks: int = 10
+    t_reject: float = 0.45
+    t_accept: float = 0.7
     smoothing: SmoothingParams = field(default_factory=SmoothingParams)
     scale: ScaleParams = field(default_factory=ScaleParams)
     timebase: TimeBaseParams = field(default_factory=TimeBaseParams)
@@ -210,10 +228,20 @@ class DetectorParams:
             "g_s",
             "max_single_span_s",
             "coverage_min_duration_s",
+            "rel_percentile",
+            "t_reject",
+            "t_accept",
         ):
             v = getattr(self, name)
             if not (math.isfinite(v) and v > 0):
                 raise ValueError(f"{name} must be finite and > 0")
+
+        if self.rel_percentile > 100:
+            raise ValueError("rel_percentile must be <= 100")
+        if self.min_kept_peaks < 1:
+            raise ValueError("min_kept_peaks must be >= 1")
+        if self.t_reject > self.t_accept:
+            raise ValueError("t_reject must be <= t_accept")
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -227,6 +255,13 @@ class DetectorParams:
                 "method": "chain",
             },
             "coverage": {"min_duration_s": self.coverage_min_duration_s},
+            "decision": {
+                "rel_to_clip": "speed / percentile of kept peak speeds of the clip",
+                "rel_percentile": self.rel_percentile,
+                "min_kept_peaks": self.min_kept_peaks,
+                "t_reject": self.t_reject,
+                "t_accept": self.t_accept,
+            },
             "signals": {
                 "smoothing": asdict(self.smoothing),
                 "scale": asdict(self.scale),
@@ -299,7 +334,12 @@ class _Peak:
     reasons: tuple[str, ...]
 
 
-def _wrist_peak(p: _Peak, event_id: str | None) -> WristPeak:
+def _rel(p: _Peak, clip_ref: float | None) -> float | None:
+    v = p.src.speed_torso_per_s
+    return None if v is None or clip_ref is None else v / clip_ref
+
+
+def _wrist_peak(p: _Peak, event_id: str | None, clip_ref: float | None) -> WristPeak:
     c = p.src
     torso = c.speed_torso_per_s
     prom = c.prominence_torso_per_s
@@ -312,6 +352,7 @@ def _wrist_peak(p: _Peak, event_id: str | None) -> WristPeak:
         speed=Speed(
             value=torso if torso is not None else c.speed_px_per_s,
             unit="torso_lengths_per_s" if torso is not None else "px_per_s",
+            rel_to_clip=_rel(p, clip_ref),
         ),
         provenance=Provenance(
             signal=SIGNAL,
@@ -386,6 +427,7 @@ def _event(
     tb: TimeBase,
     regions_s: dict[RegionName, _Samples],
     half_window_s: float,
+    clip_ref: float | None,
 ) -> CandidateEvent:
     t = tb.times_s
     first, last = chain[0].src, chain[-1].src
@@ -432,6 +474,18 @@ def _event(
                 reasons.append(rule)
         trace.append(_step(len(trace) + 1, rule, subject, outcome, **kw))
 
+    height = rep if rep is not None else max(chain, key=lambda p: p.src.speed_px_per_s)
+    rel = _rel(height, clip_ref)
+    if rel is None:
+        check(R_NO_CLIP_REF, True, height.id, param="decision.min_kept_peaks")
+        check(R_HEIGHT_REJECT, None, height.id)
+        check(R_HEIGHT_UNCERTAIN, None, height.id)
+    else:
+        check(R_NO_CLIP_REF, False, height.id, param="decision.min_kept_peaks")
+        check(R_HEIGHT_REJECT, rel < params.t_reject, height.id, rel_to_clip=round(rel, 4),
+              param="decision.t_reject")  # fmt: skip
+        check(R_HEIGHT_UNCERTAIN, rel < params.t_accept, height.id, rel_to_clip=round(rel, 4),
+              param="decision.t_accept")  # fmt: skip
     check(R_UNDETERMINED, rep is None, eid)
     check(R_MERGE, merge, eid, span_s=span, param="grouping.max_single_span_s")
     best_good = max(_good_share(p) for p in chain)
@@ -443,7 +497,10 @@ def _event(
         check(R_IRREGULAR, qw.irregular_intervals > 0, rep.id,
               irregular_intervals=qw.irregular_intervals)  # fmt: skip
     check(R_NOT_OBSERVABLE, state is RegionState.NOT_OBSERVABLE, eid, reliability=state.value)
-    status = EventStatus.UNCERTAIN if reasons else EventStatus.ACCEPTED
+    if R_HEIGHT_REJECT in reasons:
+        status = EventStatus.REJECTED
+    else:
+        status = EventStatus.UNCERTAIN if reasons else EventStatus.ACCEPTED
     if tb.basis is TimeBasis.PROXY:
         reasons.append(R_PROXY)
     trace.append(
@@ -654,9 +711,17 @@ def detect(
     if half_window_s <= 0:  # no peak at all: use the M2.2 fit half-window directly
         w = params.smoothing.window_samples(tb.nominal_interval_s)
         half_window_s = (w // 2) * tb.nominal_interval_s
+    kept_speeds = [
+        p.src.speed_torso_per_s for p in peaks if p.kept and p.src.speed_torso_per_s is not None
+    ]
+    clip_ref = (
+        float(np.percentile(kept_speeds, params.rel_percentile))
+        if len(kept_speeds) >= params.min_kept_peaks
+        else None
+    )
     for k, chain in enumerate(_chain([p for p in peaks if p.kept], params.g_s), start=1):
         eid = f"e{k:04d}"
-        events.append(_event(eid, chain, params, tb, regions_s, half_window_s))
+        events.append(_event(eid, chain, params, tb, regions_s, half_window_s, clip_ref))
         owner.update({p.id: eid for p in chain})
 
     if tb.basis is TimeBasis.SOURCE:
@@ -691,7 +756,7 @@ def detect(
         params=p_dict,
         params_sha256=params_sha256(p_dict),
         rules=list(RULES),
-        wrist_peaks=[_wrist_peak(p, owner.get(p.id)) for p in peaks],
+        wrist_peaks=[_wrist_peak(p, owner.get(p.id), clip_ref) for p in peaks],
         events=events,
         coverage=_coverage(
             tb,

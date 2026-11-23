@@ -195,7 +195,8 @@ Output = **candidate events, not validated strokes**. `producer.status = experim
 | Representative wrist | `representative_wrist`: the most prominent *internal* peak (ties: speed, earlier, left); `rep_only_run_edge_peaks`: only run-edge peaks → `undetermined`, no reference time | — |
 | Regions | torso (shoulders + hips), each wrist, legs (knees + ankles): worst keypoint per sample, over the event window ± the M2.2 fit half-window (0.1 s) | — |
 | Uncertain (observability only) | `uncertain_wrist_undetermined`; `uncertain_possible_merge` (span > max single span, never split); `uncertain_no_mostly_good_peak` (no peak with GOOD > half of its window); `uncertain_irregular_interval` (in the representative peak window); `uncertain_region_not_observable` (a region used) | `grouping.max_single_span_s` = **1.0 s, provisional** |
-| Decision | `decision`: `accepted` unless an uncertain rule failed. **No `rejected` in I2**: height thresholds come with the three-state rules (V1 step 2) | — |
+| Height (V1 step 2) | `reject_low_relative_height` (rel_to_clip < t_reject → `rejected`); `uncertain_low_relative_height` (< t_accept); `uncertain_no_clip_reference` (fewer than `min_kept_peaks` kept peaks in the clip). Height peak = representative peak, or the fastest peak when the wrist is undetermined | `decision.t_reject` = **0.45**, `decision.t_accept` = **0.7**, `rel_percentile` 90, `min_kept_peaks` 10, all provisional (section 10) |
+| Decision | `decision`: `rejected` if the height reject rule failed, else `uncertain` if any uncertain rule failed, else `accepted` | — |
 | Info | `info_time_basis_proxy`: no usable time map, times are proxy times | — |
 | Coverage | samples where neither wrist has a speed value or the torso scale is missing, in stretches ≥ `min_duration_s`; regions = wrists and/or torso; reasons `no_pose`, `below_threshold`, `broken_run` (usable samples in a run too short for the fit) | `coverage.min_duration_s` = 0.3 s |
 
@@ -219,3 +220,41 @@ Output = **candidate events, not validated strokes**. `producer.status = experim
   gap between the peaks of consecutive labels min 0.57 s, p5 0.62 s, p10 0.94 s. Both
   distributions are contaminated (peaks near a label are not all of the stroke) and they
   touch at 0.57 s: G separates most, not all, cases.
+
+## 10. Personal V1 states (V1 step 2, ADR-027)
+
+`rel_to_clip` (in `wrist_peaks[].speed`) = peak speed / 90th percentile of the speeds of the
+clip's kept peaks (torso lengths/s). Chosen among three definitions on Development A/B
+(speed / median, speed / 90th percentile, prominence / median) as the most stable across
+clips (spread of the per-clip median of target strokes: 1.77x vs 2.12x and 2.50x).
+
+`tennis_cv.strokes.states` turns a `strokes.json` into the V1 view, with reasons in Italian
+words and no percentages (`eval_strokes.py states STROKES [--show-discarded]`):
+
+| state | from | shown |
+| --- | --- | --- |
+| *Colpo segnalato* (`flagged`) | `accepted` event | yes |
+| *Da verificare* (`to_check`) | `uncertain` event, with its reasons | yes |
+| *Scartato* (`discarded`) | `rejected` event | hidden, on request |
+| *Non valutabile* (`not_assessable`) | `coverage` stretch | yes: "qui i colpi non si possono rilevare (non vuol dire che non ci siano)" |
+
+Height thresholds, Development A/B at radius 0.3 s (I2 output, before thresholds; 44 target
+strokes intercepted, 65 judged false candidates in Development B, 630 not judgeable events
+in Development A):
+
+| t (rel_to_clip) | targets below | Dev B false below | Dev A others below |
+| --- | --- | --- | --- |
+| 0.40 | 0 | 19 | 176 |
+| **0.45** | 0 | 25 | 236 |
+| 0.50 | 0 | 35 | 287 |
+| 0.55 | 0 | 40 | 332 |
+| 0.60 | 5 | 44 | 360 |
+| **0.70** | 11 | 50 | 424 |
+| 0.80 | 18 | 57 | 486 |
+
+The lowest target is at 0.56: `t_reject = 0.45` keeps a margin; between 0.45 and 0.7 an event
+is *da verificare*. Result with these values (radius 0.3 s, descriptive, same data):
+Development A 24/29 target strokes found (16 flagged, 8 to check), none discarded;
+Development B 20/24 (15 flagged, 5 to check), none discarded; Development B *colpo
+segnalato* 25 = 15 target + 3 other strokes (serves/feeds) + 6 false + 1 ambiguous; *da
+verificare* 40 (34 false); 26 discarded.

@@ -73,10 +73,21 @@ per category and I2 must handle them separately.
 | Window | Samples | Counts | Purpose |
 | --- | --- | --- | --- |
 | `fit_window` | the exact 7 samples of the M2.2 fit that produced the peak speed (start `min(max(i − 3, run start), run end − 7)`) | GOOD, LOW (always inside the run) | what the speed value is made of |
-| `quality_window` | time-base samples with `|t − t_peak| ≤ half_window_s`, `half_window_s = (7 // 2) × nominal interval` = 0.1 s at 30 fps (the M2.2 fit half-window) | GOOD, LOW, UNRELIABLE (keypoint present, visibility < 0.4 or missing), MISSING (no pose / no keypoint), irregular intervals overlapping the window | what surrounds the peak; may cross the run edge; same fields as `strokes.json` `quality_window` |
+| `quality_window` | time-base samples with `|t − t_peak| ≤ half_window_s`, `half_window_s = (7 // 2) × nominal interval` = 0.1 s at 30 fps (the M2.2 fit half-window) | GOOD, LOW, UNRELIABLE exactly as M2.2 `classify_quality` (they add up to the samples in the window); UNRELIABLE split by cause: `missing` (no pose, or keypoint absent), `non_finite` (keypoint present, x or y not finite), `low_visibility` (finite coordinates, visibility < 0.4, missing or not finite); the three causes add up to UNRELIABLE; irregular intervals overlapping the window | what surrounds the peak; may cross the run edge; mapping to `strokes.json` `quality_window` decided in I2 |
 | `base_span` | from the left base to the right base | GOOD, LOW | what the prominence was measured on |
 
-For a centred peak (`velocity_state = valid`) the two first windows are the same 7 samples.
+For a centred peak (`velocity_state = valid`) at regular 30 fps, the first two windows are the
+same 7 samples. The quality window is a window of **real time**: with the iPhone alternation
+of 31.67 / 35.00 ms the third sample on one side can be 101.67 ms away and fall outside, so the
+window holds 6 or 7 samples depending on the peak sample (tested); the fit window is always 7
+samples.
+
+Correction (2026-11-23, developer's review): the first version counted a sample with
+non-finite coordinates as MISSING and outside UNRELIABLE, unlike M2.2. Now GOOD / LOW /
+UNRELIABLE are M2.2's own classes and the causes are sub-counts. On Development A/B this
+changes only the UNRELIABLE count of the quality window (it now includes the `missing`
+samples, 132 peaks); no peak, prominence, flag or other count changes. No sample with
+present but non-finite coordinates occurs there.
 
 ## 5. Descriptive analysis on Development A and B (2026-11-23)
 

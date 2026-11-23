@@ -56,10 +56,13 @@ Quality counts (two windows, both from M2.2)
   Inside a run by construction, so only GOOD and LOW samples.
 * ``quality_window``: samples with ``|t - t_peak| <= half_window_s``, where
   ``half_window_s = (window_samples // 2) * nominal_interval_s`` is the M2.2 fit
-  half-window (0.1 s at 30 fps). It may cross the run edge and counts GOOD, LOW,
-  UNRELIABLE (keypoint present, visibility below the usable threshold or missing),
-  MISSING (no pose or no keypoint) and irregular intervals (long / short / invalid)
-  overlapping the window. It matches the ``quality_window`` of ``strokes.json``.
+  half-window (0.1 s at 30 fps). It may cross the run edge. GOOD, LOW and UNRELIABLE are
+  exactly M2.2's ``classify_quality`` (they add up to the samples in the window); the
+  UNRELIABLE samples are then split by cause, and the three causes add up to UNRELIABLE:
+  ``missing`` (no pose, or pose without this keypoint), ``non_finite`` (keypoint present,
+  x or y not finite) and ``low_visibility`` (finite coordinates, visibility below the
+  usable threshold, missing or not finite). Irregular intervals (long / short / invalid)
+  overlapping the window are counted too.
 * ``base_span``: GOOD and LOW samples between the two bases (the data the prominence used).
 """
 
@@ -81,6 +84,7 @@ from tennis_cv.signals.timebase import IntervalStatus, TimeBase
 from tennis_cv.signals.velocity import KeypointVelocity, VelocityState, keypoint_velocity
 
 FloatArray = npt.NDArray[np.float64]
+BoolArray = npt.NDArray[np.bool_]
 
 # Candidate minimum prominence chosen by the developer on Development A/B (2026-11-23,
 # docs/M2_3_PEAKS.md 6). Frozen for the single Control run; NOT applied in I1 (every peak
@@ -136,11 +140,16 @@ class Prominence:
 
 @dataclass(frozen=True)
 class QualityCounts:
+    """``good`` / ``low_but_usable`` / ``unreliable`` = M2.2 ``classify_quality``.
+    ``missing`` + ``non_finite`` + ``low_visibility`` = ``unreliable`` (its causes)."""
+
     good: int
     low_but_usable: int
     unreliable: int = 0
-    missing: int = 0
+    missing: int = 0  # cause: no pose, or keypoint absent from the pose
     irregular_intervals: int = 0
+    non_finite: int = 0  # cause: keypoint present, x or y not finite
+    low_visibility: int = 0  # cause: finite x, y; visibility < usable, missing or not finite
 
 
 @dataclass(frozen=True)
@@ -280,32 +289,61 @@ def _quality_counts(vel: KeypointVelocity, lo: int, hi: int) -> QualityCounts:
     )
 
 
-def _symmetric_window(vel: KeypointVelocity, i: int, half_window_s: float) -> QualityCounts:
+def keypoint_present(poses: PoseSequence, timebase: TimeBase, name: str) -> BoolArray:
+    """Per time-base sample: the frame has a detected pose containing keypoint ``name``
+    (whatever its coordinates or visibility)."""
+    by_index = {f.frame_index: f for f in poses.frames}
+    out = np.zeros(timebase.proxy_frames.size, dtype=bool)
+    for i, frame_index in enumerate(timebase.proxy_frames.tolist()):
+        frame = by_index[frame_index]
+        out[i] = frame.detected and any(k.name == name for k in frame.keypoints)
+    return out
+
+
+def _symmetric_window(
+    vel: KeypointVelocity, present: BoolArray, i: int, half_window_s: float
+) -> QualityCounts:
     raw = vel.positions.raw
     tb = raw.timebase
     t = tb.times_s
     inside = np.flatnonzero(np.abs(t - t[i]) <= half_window_s + _EPS_S)
     lo, hi = int(inside[0]), int(inside[-1])
-    good = low = unreliable = missing = 0
+    good = low = unreliable = missing = non_finite = low_vis = 0
     for k in range(lo, hi + 1):
-        if not (math.isfinite(raw.x_px[k]) and math.isfinite(raw.y_px[k])):
-            missing += 1
-        elif vel.quality[k] is KeypointQuality.GOOD:
+        q = vel.quality[k]  # M2.2 classify_quality, never redefined here
+        if q is KeypointQuality.GOOD:
             good += 1
-        elif vel.quality[k] is KeypointQuality.LOW:
+        elif q is KeypointQuality.LOW:
             low += 1
         else:
             unreliable += 1
+            if not present[k]:
+                missing += 1
+            elif not (math.isfinite(raw.x_px[k]) and math.isfinite(raw.y_px[k])):
+                non_finite += 1
+            else:
+                low_vis += 1
     # interval k joins samples k-1 and k: it overlaps the window when k-1 <= hi and k >= lo
     irregular = sum(
         tb.interval_status[k] in (IntervalStatus.LONG, IntervalStatus.SHORT, IntervalStatus.INVALID)
         for k in range(max(lo, 1), min(hi + 1, t.size - 1) + 1)
     )
-    return QualityCounts(good, low, unreliable, missing, irregular)
+    return QualityCounts(
+        good=good,
+        low_but_usable=low,
+        unreliable=unreliable,
+        missing=missing,
+        irregular_intervals=irregular,
+        non_finite=non_finite,
+        low_visibility=low_vis,
+    )
 
 
-def wrist_peaks(vel: KeypointVelocity, wrist: Side) -> WristPeaks:
-    """Every local maximum of ``vel`` (one wrist), run by run (module rules)."""
+def wrist_peaks(vel: KeypointVelocity, wrist: Side, present: BoolArray) -> WristPeaks:
+    """Every local maximum of ``vel`` (one wrist), run by run (module rules).
+    ``present``: :func:`keypoint_present` of the same keypoint on the same time base."""
+    if present.shape != vel.speed_2d_px_per_s.shape:
+        raise ValueError("present must have one entry per time-base sample")
     sm = vel.positions.x
     tb = vel.positions.raw.timebase
     w = sm.window_samples
@@ -367,7 +405,7 @@ def wrist_peaks(vel: KeypointVelocity, wrist: Side) -> WristPeaks:
                     fit_window=(_ref(tb, start), _ref(tb, start + w - 1)),
                     fit_counts=_quality_counts(vel, start, start + w - 1),
                     half_window_s=half_window_s,
-                    quality_window=_symmetric_window(vel, i, half_window_s),
+                    quality_window=_symmetric_window(vel, present, i, half_window_s),
                     base_span_counts=_quality_counts(vel, span_lo, span_hi),
                 )
             )
@@ -394,6 +432,7 @@ def find_wrist_peaks(
     configuration is not used here)."""
     out: dict[Side, WristPeaks] = {}
     for side in ("left", "right"):
-        vel = keypoint_velocity(poses, timebase, WRIST_KEYPOINT[side], scale, params)
-        out[side] = wrist_peaks(vel, side)
+        name = WRIST_KEYPOINT[side]
+        vel = keypoint_velocity(poses, timebase, name, scale, params)
+        out[side] = wrist_peaks(vel, side, keypoint_present(poses, timebase, name))
     return out

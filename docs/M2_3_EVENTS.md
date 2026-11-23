@@ -131,4 +131,34 @@ stale-input problem.
   PR 2, `strokes_eval.json` (docs/M2_3_EVALUATION.md).
 - TypeScript types in `packages/contracts/src`: M2.6, when the API and UI use the file
   (decision E6). Only the JSON Schema is exported now.
-- Peak detection, grouping, region states and decisions: the M2.3 detector (not started).
+- Peak detection, grouping, region states and decisions: the M2.3 detector (I1 peaks done;
+  I2 onwards not started).
+
+## 8. Planned 1.1: `coverage` (ADR-025, implemented with I2, not yet in code)
+
+Events only describe what the detector found. To show *where it could not have found a
+stroke*, 1.1 adds one optional top-level field (a minor change, section 5):
+
+```json
+"coverage": {
+  "min_duration_s": 0.3,
+  "not_assessable": [
+    {"start_proxy_frame": 1200, "end_proxy_frame": 1290, "start_t_s": 40.0, "end_t_s": 43.0,
+     "regions": ["left_wrist", "right_wrist"], "reasons": ["no_pose"]}
+  ]
+}
+```
+
+- *Not assessable* means **insufficient evidence to detect a stroke, not absence of strokes**:
+  a stroke may well have happened there. The UI must say so (e.g. "not assessable: wrists not
+  visible, strokes here cannot be detected").
+- A stretch is *not assessable* when **neither wrist** has a usable M2.2 signal, or the
+  **torso scale** is missing (the minimum prominence is in torso lengths/s), for at least
+  `min_duration_s` (a parameter, recorded in `params`, not validated).
+- `regions` and `reasons` reuse the closed lists of section 3 (`RegionName`,
+  `RegionReason`); no new vocabulary.
+- `coverage = null` means "not recorded" (every 1.0 file). Stretches are sorted, do not
+  overlap and lie inside the video.
+- Stretches where only one wrist is missing are not listed: a stroke can still be found on
+  the other wrist, and events there carry their own regions. To be revisited only if real
+  cases need it.

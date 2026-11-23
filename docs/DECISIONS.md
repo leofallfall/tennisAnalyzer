@@ -457,3 +457,62 @@ categories separately without excluding run-edge peaks in advance.
 results in docs/M2_3_PEAKS.md §7 (internal peak for 19 of 26 targets, 13 of 14 `full`
 targets within 0.17 s; same session as Development B, not a validation). Nothing was changed
 on Control results. Closing I1 waits for the developer's review of PR #16.
+
+### ADR-025 Personal V1 path: usable detector before formal validation (2026-11-23)
+**Context:** the developer wants a first usable version of the app and improvement driven by
+real use, without dropping the distinction between technical checks, personal improvement and
+independent validation. Control was used once in I1 (ADR-024), so the single Control run
+planned for I3 (ADR-023) is no longer possible. This ADR amends ADR-021 and ADR-023; it does
+not rewrite them.
+**Decision (approved by the developer):**
+- **Personal V1**: upload a video, see the possible strokes on the video, their state and the
+  reason for any doubt, confirm / correct / delete / add strokes, mark the reviewed parts of
+  the video. No technical judgement on the stroke. Forehand/backhand recognition is postponed
+  (`classification` stays `unknown`); the type set by hand is kept with the corrections.
+- **Three states, no uncalibrated percentages or scores**, kept apart from evidence quality:
+  *stroke flagged* (`accepted`), *to check* (`uncertain`, with its concrete reason), *not
+  assessable* (an event whose `reliability.state` is `not_observable`, or a stretch of video
+  where no stroke can be found, see `coverage` below). A *not assessable* stretch means the
+  evidence is insufficient to detect a stroke, **not** that there is no stroke; the UI says
+  so. `rejected` events are hidden by default and shown on request.
+- **Kept from ADR-021:** the five dimensions of the report, peaks as evidence and events as
+  what is counted, the grouping constraint, connected-component association with independent
+  radii, ambiguity never assigned, numeric judgements by the developer after seeing results
+  as provisional values, the confirmation video before M3.1 with all its conditions.
+- **Kept from the design (ADR-023):** thresholds of I3 chosen by the developer from a
+  sensitivity table on Development A/B only.
+- **Postponed:** formal closure of M2.3 (the detector stays `experimental` in the app and in
+  `capabilities` until the confirmation video); blind re-annotation (already optional); I4,
+  only if real cases show missed strokes with good visibility.
+- **Replaced:** the single Control run of I3 by a regression report on Development A/B and
+  Control, with Control always reported as "same session as Development B, already used".
+  Control is regression data from 2026-11-23 and never independent validation or evidence of
+  generalisation. Independent evidence now rests only on the confirmation video and, later,
+  on other players' videos.
+- **Confirmation video:** one of the first-use videos may serve as the ADR-021 confirmation
+  video if it meets every condition (new session, behind view, analysed with frozen rules
+  before any change, reviewed end to end by the developer).
+- **Every new video is measured once as it is**, with frozen rules, before its corrections
+  are used to change anything; that first result is kept. Each video is then either *new* or
+  *already used*. A rule change needs several cases, not one, and comes with a before/after
+  report on all labelled and reviewed videos.
+- **`strokes.json` 1.1 (minor):** optional top-level `coverage`, the stretches where the
+  detector could not have found a stroke (both wrists without a usable signal, or no torso
+  scale), with closed reasons; `null` = not recorded (1.0 files). Specified in
+  docs/M2_3_EVENTS.md §8, implemented with I2.
+- **User corrections and reviewed stretches** are stored apart from `strokes.json`, never
+  overwrite it, survive a re-run of the detector, and can be exported as `labels.csv` /
+  `annotated.csv` for `evaluate`. Case classification (video-specific, recurring algorithm
+  limit, personal improvement, general problem) is done together with the developer on a
+  case log, not in the app.
+**Alternatives:** keep the full I3 and formal M2.3 exit before any use (delays the first use
+with little extra evidence on one player); drop the confirmation video (loses the only
+independent check); compute "not assessable" stretches in the UI from `pose.json` (duplicates
+engine logic, untraceable, not usable by `evaluate`); show a numeric confidence (uncalibrated
+on one player, would look like a measurement).
+**Consequences:** until the confirmation video there is no number on behaviour in new
+conditions; the app labels the detector as experimental. Reusing regression data raises the
+risk of fitting it; the first-measure rule and the multi-case rule limit it. A stroke added
+by the user inside a *not assessable* stretch is a missed stroke with a known cause (input),
+distinct from a miss inside an observable stretch (algorithm). One player only: nothing is
+known about generalisation.

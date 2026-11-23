@@ -145,6 +145,79 @@
       "title": "ComplementarySignal",
       "type": "object"
     },
+    "Coverage": {
+      "additionalProperties": false,
+      "description": "1.1 (ADR-025, docs/M2_3_EVENTS.md 8).",
+      "properties": {
+        "min_duration_s": {
+          "title": "Min Duration S",
+          "type": "number"
+        },
+        "not_assessable": {
+          "items": {
+            "$ref": "#/$defs/CoverageStretch"
+          },
+          "title": "Not Assessable",
+          "type": "array"
+        }
+      },
+      "required": [
+        "min_duration_s",
+        "not_assessable"
+      ],
+      "title": "Coverage",
+      "type": "object"
+    },
+    "CoverageStretch": {
+      "additionalProperties": false,
+      "description": "A stretch where no stroke could have been detected: insufficient evidence, NOT\nabsence of strokes.",
+      "properties": {
+        "end_proxy_frame": {
+          "minimum": 0,
+          "title": "End Proxy Frame",
+          "type": "integer"
+        },
+        "end_t_s": {
+          "title": "End T S",
+          "type": "number"
+        },
+        "reasons": {
+          "items": {
+            "$ref": "#/$defs/RegionReason"
+          },
+          "minItems": 1,
+          "title": "Reasons",
+          "type": "array"
+        },
+        "regions": {
+          "items": {
+            "$ref": "#/$defs/RegionName"
+          },
+          "minItems": 1,
+          "title": "Regions",
+          "type": "array"
+        },
+        "start_proxy_frame": {
+          "minimum": 0,
+          "title": "Start Proxy Frame",
+          "type": "integer"
+        },
+        "start_t_s": {
+          "title": "Start T S",
+          "type": "number"
+        }
+      },
+      "required": [
+        "start_proxy_frame",
+        "end_proxy_frame",
+        "start_t_s",
+        "end_t_s",
+        "regions",
+        "reasons"
+      ],
+      "title": "CoverageStretch",
+      "type": "object"
+    },
     "EventReliability": {
       "additionalProperties": false,
       "properties": {
@@ -390,6 +463,45 @@
       "title": "MapStatus",
       "type": "string"
     },
+    "PeakCategoryValue": {
+      "enum": [
+        "internal",
+        "run_edge"
+      ],
+      "title": "PeakCategoryValue",
+      "type": "string"
+    },
+    "PeakProminence": {
+      "additionalProperties": false,
+      "description": "1.1, optional. How far the peak stands out from the dips around it, inside its run\n(docs/M2_3_PEAKS.md). Internal and run-edge prominences are not equivalent.",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/PeakCategoryValue"
+        },
+        "lower_bound": {
+          "description": "A side reached the run edge: true value >= value",
+          "title": "Lower Bound",
+          "type": "boolean"
+        },
+        "unit": {
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "value",
+        "unit",
+        "category",
+        "lower_bound"
+      ],
+      "title": "PeakProminence",
+      "type": "object"
+    },
     "PeakStatus": {
       "enum": [
         "grouped",
@@ -543,6 +655,7 @@
     },
     "QualityWindow": {
       "additionalProperties": false,
+      "description": "Samples within ``half_window_s`` of the peak. ``good`` / ``low_but_usable`` /\n``unreliable`` are M2.2 ``classify_quality``. ``missing`` (no pose or keypoint absent),\n``non_finite`` and ``low_visibility`` are the causes of ``unreliable`` (1.1 producers:\nthey add up to it; ``None`` = cause not recorded).",
       "properties": {
         "good": {
           "minimum": 0,
@@ -563,10 +676,38 @@
           "title": "Low But Usable",
           "type": "integer"
         },
+        "low_visibility": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1.1, optional",
+          "title": "Low Visibility"
+        },
         "missing": {
           "minimum": 0,
           "title": "Missing",
           "type": "integer"
+        },
+        "non_finite": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1.1, optional",
+          "title": "Non Finite"
         },
         "unreliable": {
           "minimum": 0,
@@ -988,6 +1129,18 @@
           "title": "Id",
           "type": "string"
         },
+        "prominence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PeakProminence"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1.1, optional"
+        },
         "provenance": {
           "$ref": "#/$defs/Provenance"
         },
@@ -1038,6 +1191,18 @@
   "additionalProperties": false,
   "description": "``strokes.json`` 1.x (see module docstring and docs/M2_3_EVENTS.md).",
   "properties": {
+    "coverage": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Coverage"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "1.1, optional; null = not recorded (every 1.0 file)"
+    },
     "created_at": {
       "description": "The only field ignored by repeatability checks",
       "format": "date-time",

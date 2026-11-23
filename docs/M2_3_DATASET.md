@@ -63,14 +63,18 @@ report.
 
 - **Development** (A and B) is the only data used to look at signals, choose parameters and
   thresholds (I1–I3), and fill review sheets.
-- **Control** (img5098_full 4500–9470) holds strokes never used in development, evaluated
-  once with frozen parameters. It measures how the detector behaves on **unseen events of the
-  same session** (same day, venue, light, camera position, clothing, player).
+- **Control** (img5098_full 4500–9470) held strokes never used in development. It was run
+  **once**, for I1, on 2026-11-23 with frozen code and value (docs/M2_3_PEAKS.md §7), and
+  measured behaviour on **unseen events of the same session** (same day, venue, light,
+  camera position, clothing, player). From 2026-11-23 it is **regression data** (ADR-025):
+  reused to check that later changes do not make results worse, no longer unseen. The single
+  Control run planned for I3 is replaced by a regression report.
 - Control is **not** an independent validation and **not** evidence of generalisation: not to
   a new session, other venues or cameras, other players. Its numbers are reported as
   "Control (same session as Development B)", never as a test-set accuracy.
 - The independent check remains the ADR-021 confirmation video (new session, never used for
-  tuning, annotated end to end), required before M3.1.
+  tuning, annotated end to end), required before M3.1. One of the first-use videos may serve
+  as that video if it meets every condition (ADR-025).
 
 ## 3. Results of `eval_strokes.py check` (2026-11-23)
 

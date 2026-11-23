@@ -1,6 +1,6 @@
 # Roadmap
 
-## Current status (2026-11-20)
+## Current status (2026-11-23)
 
 **M0 Foundation: complete.** Monorepo, docs, web app, API, worker, engine interfaces,
 first pose experiment, tests. **M1 is in progress**: all functional pieces exist and
@@ -17,16 +17,18 @@ ADR-017). **M2.1 dataset and labels: done for the personal prototype** (2026-11-
 `docs/M2_1_DATASET.md` §9): 6 clips, 35 labelled impacts, **one player** (the developer).
 **Personal-first priority** (ADR-018): the prototype is developed and checked on the
 developer's own tennis first; validation on other players comes later and is not claimed.
-**M2.2 (signal processing only) approved** on 2026-11-20 and **in progress** after the
-PR #1/#2 merges (`docs/M2_2_SIGNALS.md`): interventions 1–5 merged (time base, smoothing,
-two quality levels, torso scale, apparent 2D speed); 6 (body signals, player
-configuration) under review. Each intervention is reviewed before the next.
+**M2.2 signal processing: complete** (2026-11-22, `docs/M2_2_SIGNALS.md`): time base,
+smoothing, two quality levels, torso scale, apparent 2D speed, body signals and player
+configuration; engine library only.
 
 **Product direction: Session Analysis first** (approved 2026-11-20, ADR-020): the session
 report becomes M3 and single-stroke deep analysis M4; session indicators are computed on
 every stroke, anchored to the stroke event, validated before any issue is shown.
-**M2.3 exit criterion approved** (2026-11-20, ADR-021); M2.3 implementation still waits for
-the end of M2.2 and an explicit start.
+**M2.3 in progress, experimental:** I0 dataset and I1 wrist peaks done (Control run once
+for I1, now regression data). **Next goal: the personal V1** (ADR-025, section below): a
+usable app that finds possible strokes, shows them on the video and lets the developer
+correct them, improved from real use. M2.3 stays experimental until the ADR-021
+confirmation video.
 
 **Personal AI analysis (Claude Code, no API): plumbing done** (2026-11-18, ADR-013,
 `docs/AI_ANALYSIS.md`). Evidence Packs, the `/analizza-sessione` skill, validated import and
@@ -75,13 +77,39 @@ be confirmed or revised after the M2.1 data** (D11).
 | Step | Goal | Status |
 | --- | --- | --- |
 | M2.1 | Dataset, labels, `eval_strokes.py`, input visibility report (also M1 item 11) | ✅ single-player dataset (ADR-018) |
-| M2.2 | Kinematic signals (time base, smoothing, two-level visibility, torso scale, apparent 2D speed, shoulder/hip lines, hand distance, wrist vs torso; ADR-019) | in progress: #1–#5 done (time base, smoothing, quality levels, torso scale, apparent 2D speed); #6 body signals + `PlayerConfig` under review |
-| M2.3 | Candidate events (relative speed peaks on both wrists grouped into one event per gesture, complementary signals, confidence, abstention; NumPy peaks) + `strokes.json` with per-region observability and a decision trace; peak-to-impact offset measured on the 35 labels (the peak stays a candidate event) | exit criterion approved (ADR-021); `strokes.json` 1.0 format and validator ready (ADR-022, docs/M2_3_EVENTS.md); evaluation `evaluate` + `strokes_eval.json` 1.0 and `report` + review sheet ready on synthetic data (docs/M2_3_EVALUATION.md); detector design approved 2026-11-23 (I0–I4); I0 dataset split and label checks done (docs/M2_3_DATASET.md, ADR-023); I1 wrist peaks implemented, descriptive analysis on Development A/B, candidate minimum prominence 2.0 torso lengths/s; Control run once on 2026-11-23 with frozen code and value, descriptive only, same session as Development B (docs/M2_3_PEAKS.md §7, ADR-024); no events yet, no real validation |
+| M2.2 | Kinematic signals (time base, smoothing, two-level visibility, torso scale, apparent 2D speed, shoulder/hip lines, hand distance, wrist vs torso; ADR-019) | ✅ done 2026-11-22 (library only) |
+| M2.3 | Candidate events (relative speed peaks on both wrists grouped into one event per gesture, complementary signals, confidence, abstention; NumPy peaks) + `strokes.json` with per-region observability and a decision trace; peak-to-impact offset measured on the 35 labels (the peak stays a candidate event) | exit criterion approved (ADR-021); `strokes.json` 1.0 format and validator ready (ADR-022, docs/M2_3_EVENTS.md); evaluation `evaluate` + `strokes_eval.json` 1.0 and `report` + review sheet ready on synthetic data (docs/M2_3_EVALUATION.md); detector design approved 2026-11-23 (I0–I4); I0 dataset split and label checks done (docs/M2_3_DATASET.md, ADR-023); I1 wrist peaks implemented, descriptive analysis on Development A/B, candidate minimum prominence 2.0 torso lengths/s; Control run once on 2026-11-23 with frozen code and value, descriptive only, same session as Development B (docs/M2_3_PEAKS.md §7, ADR-024); Control is regression data and the I3 Control run is replaced by a regression report (ADR-025); `strokes.json` 1.1 `coverage` planned with I2; experimental until the confirmation video; no events yet, no real validation |
 | M2.4 | Forehand/backhand with levels and uncertainty reasons | not started |
 | M2.5 | Player verification, **moved before M3** (ADR-020): mark strokes that may belong to another person and exclude them from statistics when not reliable, with traceable reasons; no identity recognition for now. Later: selection by tap, `num_poses` > 1 if data require it | not started |
 | M2.6 | Worker step, API artifact, contracts, UI list, capabilities | not started |
 | M2.7 | (conditional) 10 fps scan + dense pose around candidates, only if measured cost requires it | conditional |
 | M2.8 | (conditional) other pose estimator (e.g. rtmlib) behind `PoseEstimator`, only past an agreed error threshold | conditional |
+
+### Personal V1 (ADR-025) — the next goal
+A first usable version for the developer's own videos, improved from real use. No technical
+judgement on strokes, no uncalibrated percentages. Each step is one small PR, reviewed
+before the next; nothing starts without an explicit go.
+
+**Practical priority:** reach the first version in which strokes can be seen and corrected.
+Refinements that are not indispensable for that first use wait until real cases ask for
+them.
+
+| # | Step | What changes in the app |
+| --- | --- | --- |
+| 0 | I1 closure (PR #16): Control recorded in the docs | nothing visible |
+| 1 | I2: peaks grouped into possible strokes, minimum prominence 2.0 applied as an **initial provisional parameter** (not a validated threshold; may change after real use and collected cases), `strokes.json` 1.1 with `coverage` | strokes of any video from the command line |
+| 2 | Provisional rules for the three states (part of I3), chosen on Development A/B; regression report on Development A/B and Control | every possible stroke gets a state and a reason |
+| 3 | Worker step + API + contracts; `capabilities` strokes = experimental | every analysis produces strokes; older analyses re-processed from `pose.json` |
+| 4 | Strokes view on the analysis page: timeline markers, *stroke flagged* / *to check* / *not assessable* (events, and grey stretches labelled as insufficient evidence to detect strokes, never as "no strokes"), reason in words, region visibility shown apart, jump to the stroke | the first usable result |
+| 5 | Review: confirm, delete with reason, move, set type (forehand / backhand / other), add a missed stroke, mark reviewed stretches; corrections stored apart and exportable as labels; case log | results can be corrected and become cases |
+| 6 | First use on 2–3 new videos, each measured once as it is before any change; one may be the confirmation video | first real measure and first case list |
+
+After first use, only if real cases ask for it: automatic forehand/backhand (M2.4, using the
+types set by hand), rule and threshold adjustments, player verification (M2.5), I4,
+M2.7/M2.8. Improvement loop: every reported problem goes to the case log and is classified
+with the developer (video-specific, recurring algorithm limit, personal improvement, general
+problem); a rule changes only for recurring problems, with a before/after report on all
+labelled and reviewed videos.
 
 ### M3 — Session Analysis (was M4; ADR-020)
 The product's entry point: recurring issues of a session for forehand, backhand and both,
@@ -133,7 +161,6 @@ M1 → M2 → M3 → M4; M4 → M5; M1 → M6 (parallel research); M4 + M3 → M
 ## Priorities
 
 Reliability of ingestion and pose > stroke detection > metrics > AI interpretation >
-comparison/progress. Each M2 step starts only after explicit approval (M2.2 approved
-2026-11-20; M2.3 and later not yet). Personal-first (ADR-018): results are first judged on
+comparison/progress. Each step starts only after explicit approval. Personal-first (ADR-018): results are first judged on
 the developer's own tennis; the engine stays player-independent (no body-specific constants,
 per-player hand/backhand, personal data separate from algorithm parameters).

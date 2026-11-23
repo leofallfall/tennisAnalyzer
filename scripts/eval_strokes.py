@@ -28,8 +28,9 @@ POSE_DIR (pose.json + timemap.json when present) and writes POSE_DIR/strokes.jso
 --out; given a MANIFEST.md it writes DIR/<clip_id>.strokes.json for every clip, the layout
 ``evaluate --results-dir`` reads. Output is candidate events, not validated strokes.
 ``--g-s`` overrides the grouping gap G (exploration only; it is recorded in the file).
-``--last-proxy-frame`` writes nothing after that frame (Development B stops at 4499:
-the Control part of img5098_full is never written).
+``--last-proxy-frame`` cuts the inputs at that frame before any computation, as if the
+video ended there (Development B stops at 4499: no frame of the Control part of
+img5098_full is used); frames, times and hashes stay those of the original files.
 
 ``validate-strokes`` checks a strokes.json 1.x file: version, schema, the eight invariants
 and (unless --no-inputs) the sha256 of pose.json / timemap.json in DIR (default: the
@@ -585,7 +586,7 @@ def main(argv: list[str] | None = None) -> int:
         "--last-proxy-frame",
         type=int,
         default=None,
-        help="write nothing after this frame (data splits, e.g. Development B: 4499)",
+        help="use no frame after this one (data splits, e.g. Development B: 4499)",
     )
     s.set_defaults(func=cmd_detect)
 

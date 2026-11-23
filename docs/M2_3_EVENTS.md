@@ -205,10 +205,15 @@ Output = **candidate events, not validated strokes**. `producer.status = experim
   have peaks; regions not used (e.g. legs) never change the decision.
 - Times written in the file are rounded once to 4 decimals before grouping, so the
   in-memory document and the written one satisfy the same invariants.
-- `--last-proxy-frame` (recorded as `params.input.last_proxy_frame`): signals are computed
-  on the whole file (the time map needs it) and nothing after the frame is written, as I1
-  did for data splits. Development B uses 4499, so the Control part of img5098_full is
-  never written.
+- `--last-proxy-frame` (recorded as `params.input.last_proxy_frame`): pose.json and
+  timemap.json are cut at that frame **before any computation** (`truncate_inputs`), as
+  if the video ended there. Every step that uses samples after the one it computes
+  (centred torso-scale median ±0.5 s, M2.2 fit ±3 samples and its VALID/EDGE run state,
+  peak detection and prominence walks to the run edge, quality, fit and base windows,
+  region windows, coverage runs) therefore stops at the limit: the result does not depend
+  on later frames (test `test_last_proxy_frame_result_ignores_later_frames`). Frame
+  numbers, times, input hashes and `inputs.pose.frames` stay those of the original files.
+  Development B uses 4499, so nothing of the Control part of img5098_full is read.
 - G was chosen on Development A/B only (ADR-026): gaps between consecutive kept peaks within
   ±0.5 s of a target label (same gesture) p50 0.17 s, p90 0.27 s, p95 0.33 s, max 0.57 s;
   gap between the peaks of consecutive labels min 0.57 s, p5 0.62 s, p10 0.94 s. Both

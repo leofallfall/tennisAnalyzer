@@ -60,6 +60,7 @@ from tennis_cv.signals.timebase import (
     TimeBaseParams,
     TimeBasis,
     build_timebase,
+    check_timemap,
 )
 from tennis_cv.signals.velocity import KeypointVelocity, VelocityState, keypoint_velocity
 from tennis_cv.strokes.artifact import _TOL as TIME_TOLERANCE_S
@@ -504,15 +505,12 @@ def _coverage(
     scale: TorsoScale,
     torso: _Samples,
     min_duration_s: float,
-    last_proxy_frame: int | None = None,
 ) -> Coverage:
     n = tb.times_s.size
-    if last_proxy_frame is not None:
-        n = int(np.searchsorted(tb.proxy_frames, last_proxy_frame, side="right"))
     no_wrist = np.ones(n, dtype=bool)
     for v in vels.values():
-        no_wrist &= ~np.isfinite(v.speed_2d_px_per_s[:n])
-    no_scale = np.array([s is not ScaleState.OK for s in scale.state[:n]], dtype=bool)
+        no_wrist &= ~np.isfinite(v.speed_2d_px_per_s)
+    no_scale = np.array([s is not ScaleState.OK for s in scale.state], dtype=bool)
     bad = no_wrist | no_scale
     stretches: list[CoverageStretch] = []
     i = 0
@@ -559,6 +557,42 @@ def _coverage(
     return Coverage(min_duration_s=min_duration_s, not_assessable=stretches)
 
 
+def truncate_inputs(
+    poses: PoseSequence, timemap: TimeMap | None, last_proxy_frame: int
+) -> tuple[PoseSequence, TimeMap | None]:
+    """Inputs as if the video ended at ``last_proxy_frame`` (inclusive).
+
+    Pose frames after it are dropped. A consistent time map is cut to the same proxy
+    frames and to the source frames they show (``proxy_to_source`` prefix, source times up
+    to the last source frame used, counts updated), so it stays consistent with the cut
+    poses and gives every kept frame the time it has in the whole file. Summary statistics
+    of the whole file (duplicated / dropped frames, errors) are not used by the time base
+    and are left as they are. An inconsistent map is passed unchanged: it stays unusable
+    and the time basis stays proxy, as on the whole file."""
+    if last_proxy_frame < 0:
+        raise ValueError("last_proxy_frame must be >= 0")
+    frames = [f for f in poses.frames if f.frame_index <= last_proxy_frame]
+    if not frames:
+        raise ValueError(f"no pose frame at or before frame {last_proxy_frame}")
+    cut = poses.model_copy(update={"frames": frames})
+    if timemap is None or check_timemap(poses, timemap):
+        return cut, timemap
+    n_proxy = min(frames[-1].frame_index + poses.frame_stride, len(timemap.proxy_to_source))
+    mapping = timemap.proxy_to_source[:n_proxy]
+    n_source = max(mapping) + 1
+    summary = timemap.summary.model_copy(
+        update={"proxy_frame_count": n_proxy, "source_frame_count": n_source}
+    )
+    cut_map = timemap.model_copy(
+        update={
+            "summary": summary,
+            "proxy_to_source": mapping,
+            "source_times_s": timemap.source_times_s[:n_source],
+        }
+    )
+    return cut, cut_map
+
+
 def detect(
     poses: PoseSequence,
     *,
@@ -573,13 +607,17 @@ def detect(
 ) -> StrokesFile:
     """Run the detector on one pose sequence; the result passes every invariant.
 
-    ``last_proxy_frame`` keeps only peaks and coverage up to that frame (inclusive), as I1
-    did for data splits (Development B = img5098_full 0-4499): signals are computed on the
-    whole file (the time map needs it), then nothing after the frame is written. It is
-    recorded in ``params.input``; the input hashes stay those of the whole files."""
+    ``last_proxy_frame`` (data splits, e.g. Development B = img5098_full 0-4499): the
+    inputs are cut at that frame (inclusive) *before* any computation
+    (:func:`truncate_inputs`), so time base, smoothing, velocity, torso scale, peaks,
+    prominences, quality windows, regions and coverage never see a later frame. Frame
+    numbers and times stay those of the original file; the input hashes and
+    ``inputs.pose.frames`` describe the whole files; the limit is recorded in
+    ``params.input``. Without a limit nothing changes."""
     params = params or DetectorParams()
-    if last_proxy_frame is not None and last_proxy_frame < 0:
-        raise ValueError("last_proxy_frame must be >= 0")
+    all_frames = len(poses.frames)
+    if last_proxy_frame is not None:
+        poses, timemap = truncate_inputs(poses, timemap, last_proxy_frame)
     tb = build_timebase(poses, timemap, params.timebase)
     scale = torso_scale(poses, tb, params.scale, params.smoothing)
     vels: dict[Side, KeypointVelocity] = {}
@@ -593,8 +631,6 @@ def detect(
         wp = wrist_peaks(vels[side], side, present[side])
         cands += wp.peaks
         half_window_s = wp.half_window_s
-    if last_proxy_frame is not None:
-        cands = [c for c in cands if c.sample.proxy_frame <= last_proxy_frame]
     cands.sort(key=lambda c: (c.sample.t_s, c.wrist))
     peaks: list[_Peak] = []
     for k, c in enumerate(cands, start=1):
@@ -646,7 +682,7 @@ def detect(
                 file=pose_file,
                 sha256=pose_sha256,
                 fps=poses.fps,
-                frames=len(poses.frames),
+                frames=all_frames,
                 frame_stride=poses.frame_stride,
             ),
             timemap=tm_input,
@@ -664,7 +700,6 @@ def detect(
             scale,
             regions_s[RegionName.TORSO],
             params.coverage_min_duration_s,
-            last_proxy_frame,
         ),
     )
 

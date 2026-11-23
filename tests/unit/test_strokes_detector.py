@@ -6,15 +6,20 @@ validates the detector on real data."""
 from __future__ import annotations
 
 import dataclasses
+import os
 from collections.abc import Callable
 from datetime import UTC, datetime
+from fractions import Fraction
 from math import erf, sqrt
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 from tennis_cv.pose.models import Keypoint, PoseFrame, PoseSequence
+from tennis_cv.signals import build_timebase, keypoint_velocity, torso_scale
+from tennis_cv.signals.velocity import VelocityState
 from tennis_cv.strokes.artifact import (
     EventStatus,
     PeakStatus,
@@ -36,7 +41,9 @@ from tennis_cv.strokes.detector import (
     DetectorParams,
     detect,
     detect_dir,
+    truncate_inputs,
 )
+from tennis_cv.video.timemap import TimeMap, build_timemap
 
 FPS = 30.0
 NOW = datetime(2026, 11, 23, 12, 0, tzinfo=UTC)
@@ -262,3 +269,129 @@ def test_last_proxy_frame_writes_nothing_after_it() -> None:
     assert cut.coverage is not None and cut.coverage.not_assessable == []
     assert cut.params["input"] == {"last_proxy_frame": 60}
     assert cut.inputs.pose.frames == 120  # hashes and counts are those of the whole file
+
+
+# ------------------------------------------------------------------ split boundary
+
+LIMIT = 149  # stands for the Development B / Control boundary (4499 on img5098_full)
+
+
+def _iphone_timemap(n_source: int) -> TimeMap:
+    """Source intervals alternating 31.67 / 35.00 ms (iPhone, M2.2), mapped to 30 fps."""
+    t, src = 0, [Fraction(0)]
+    for d in [114, 126] * (n_source // 2):  # 1/3600 s units
+        t += d
+        src.append(Fraction(t, 3600))
+    return build_timemap(src, FPS)
+
+
+def _boundary_case() -> tuple[PoseSequence, TimeMap]:
+    """A stroke whose speed bump straddles the limit (peak 8 frames before it, the fall and
+    the fit / scale / prominence windows after it), plus one earlier stroke."""
+    tm = _iphone_timemap(330)
+    n = tm.summary.proxy_frame_count
+    poses = _poses(right=_sum(_bell(100), _bell(LIMIT - 8, width=4.0)), n=n)
+    return poses, tm
+
+
+def _tamper_after(poses: PoseSequence, limit: int) -> PoseSequence:
+    """Frames after ``limit`` changed in every way the detector reads: wrist motion, torso
+    size (scale), visibility, missing keypoints and missing poses. Earlier frames untouched."""
+    frames = []
+    for f in poses.frames:
+        k = f.frame_index
+        if k <= limit:
+            frames.append(f)
+            continue
+        if k % 17 == 0:
+            frames.append(f.model_copy(update={"detected": False, "keypoints": []}))
+            continue
+        kps = []
+        for kp in f.keypoints:
+            if kp.name == "left_wrist" and k % 5 == 0:
+                continue  # wrist absent
+            x, y, vis = kp.x, kp.y, kp.visibility
+            if kp.name == "right_wrist":
+                x += 0.4 * ((k - limit) % 4) / 3  # fast zig-zag right after the limit
+                vis = 0.45 if k % 3 == 0 else vis  # LOW samples
+            if "shoulder" in kp.name:
+                y -= 0.05  # longer torso: different scale
+            kps.append(kp.model_copy(update={"x": x, "y": y, "visibility": vis}))
+        frames.append(f.model_copy(update={"keypoints": kps}))
+    return poses.model_copy(update={"frames": frames})
+
+
+def _detect(poses: PoseSequence, tm: TimeMap, limit: int | None) -> StrokesFile:
+    return detect(
+        poses, pose_file="pose.json", pose_sha256="0" * 64, timemap=tm,
+        timemap_file="timemap.json", timemap_sha256="1" * 64, now=NOW, last_proxy_frame=limit,
+    )  # fmt: skip
+
+
+def test_last_proxy_frame_result_ignores_later_frames() -> None:
+    poses, tm = _boundary_case()
+    tampered = _tamper_after(poses, LIMIT)
+    assert [f for f in tampered.frames if f.frame_index <= LIMIT] == [
+        f for f in poses.frames if f.frame_index <= LIMIT
+    ]
+    a, b = _detect(poses, tm, LIMIT), _detect(tampered, tm, LIMIT)
+    assert check_invariants(a) == [] and a.time_basis.value == "source"
+    # the whole detector result, byte for byte: peaks, prominences, quality windows,
+    # events, regions, reliability, trace, coverage
+    assert dump_strokes(a) == dump_strokes(b)
+    assert [e.time.ref_proxy_frame for e in a.events] == [100, LIMIT - 8]
+    assert a.inputs.pose.frames == len(poses.frames)  # metadata of the whole file
+
+    # the test is sensitive: without the cut, the same frames give a different result
+    fa, fb = _detect(poses, tm, None), _detect(tampered, tm, None)
+    near = [p for p in fa.wrist_peaks if p.proxy_frame <= LIMIT]
+    near_b = [p for p in fb.wrist_peaks if p.proxy_frame <= LIMIT]
+    assert [p.model_dump() for p in near] != [p.model_dump() for p in near_b]
+
+
+def test_last_proxy_frame_intermediate_signals_ignore_later_frames() -> None:
+    poses, tm = _boundary_case()
+    tampered = _tamper_after(poses, LIMIT)
+    signals = []
+    for ps in (poses, tampered):
+        cp, cm = truncate_inputs(ps, tm, LIMIT)
+        tb = build_timebase(cp, cm)
+        sc = torso_scale(cp, tb)
+        vel = keypoint_velocity(cp, tb, "right_wrist", sc)
+        signals.append((tb, sc, vel))
+    (tb_a, sc_a, v_a), (tb_b, sc_b, v_b) = signals
+    assert tb_a.basis.value == "source" and tb_a.map_status.value == "ok"
+    assert int(tb_a.proxy_frames[-1]) == LIMIT
+    np.testing.assert_array_equal(tb_a.times_s, tb_b.times_s)
+    np.testing.assert_array_equal(sc_a.length_px, sc_b.length_px)
+    np.testing.assert_array_equal(v_a.speed_2d_px_per_s, v_b.speed_2d_px_per_s)
+    assert v_a.state == v_b.state
+    # times are those of the whole file: same as the time base of the uncut inputs
+    whole = build_timebase(poses, tm)
+    np.testing.assert_array_equal(tb_a.times_s, whole.times_s[: tb_a.times_s.size])
+    np.testing.assert_array_equal(tb_a.proxy_frames, whole.proxy_frames[: tb_a.times_s.size])
+    # the samples next to the limit are run edges of the cut input (no later sample used)
+    assert v_a.state[-1] is not VelocityState.VALID
+
+
+REAL_DEV_B = os.environ.get("TPA_DEV_B_POSE_DIR")
+
+
+@pytest.mark.skipif(not REAL_DEV_B, reason="set TPA_DEV_B_POSE_DIR to img5098_full's pose dir")
+def test_real_development_b_ignores_control_frames(tmp_path: Path) -> None:
+    """Real img5098_full (not committed): Development B with limit 4499, then the frames
+    after 4499 tampered; the detector result must be identical (hashes are given, not computed)."""
+    src = Path(str(REAL_DEV_B))
+    poses = PoseSequence.model_validate_json((src / "pose.json").read_bytes())
+    tm = TimeMap.model_validate_json((src / "timemap.json").read_bytes())
+    tampered = _tamper_after(poses, 4499)
+
+    def run(ps: PoseSequence) -> str:
+        doc = detect(
+            ps, pose_file="pose.json", pose_sha256="0" * 64, timemap=tm,
+            timemap_file="timemap.json", timemap_sha256="1" * 64, now=NOW, last_proxy_frame=4499,
+        )  # fmt: skip
+        assert check_invariants(doc) == []
+        return dump_strokes(doc)
+
+    assert run(poses) == run(tampered)

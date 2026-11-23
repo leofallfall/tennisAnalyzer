@@ -555,8 +555,11 @@ regions, uncertainty for observability only, no automatic split.
 - **possible_merge = span > `max_single_span_s` (1.0 s, provisional)**, not span > G: with
   chaining most real strokes span more than G (span within ±0.5 s of a label p50 0.45 s,
   max 0.8 s), so span > G would flag nearly every stroke.
-- **Data splits:** `--last-proxy-frame` writes nothing after a frame; Development B runs with
-  4499, so nothing of Control is written or evaluated.
+- **Data splits:** `--last-proxy-frame` cuts pose.json and timemap.json at a frame before
+  any computation, so smoothing, velocity, scale, peaks, quality and coverage never use a
+  later frame (a filter on the output alone would not: centred windows and prominence walks
+  cross the limit); frames, times and hashes stay those of the original files. Development B
+  runs with 4499.
 **First results (Development A/B, radius 0.3 s, descriptive, not validation):** Development
 A 24/29 intercepted (22 accepted, 2 uncertain), 4 missed, 1 ambiguous; Development B 20/24
 (17 accepted, 3 uncertain), 3 missed (causes: no pose 1, peak discarded 1, event outside the

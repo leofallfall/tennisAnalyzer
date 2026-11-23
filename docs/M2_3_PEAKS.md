@@ -4,8 +4,9 @@ Status (2026-11-23): **peak finding implemented and tested on synthetic signals;
 analysis on Development A and B only.** The developer chose 2.0 torso lengths/s as the
 **candidate** minimum prominence for I2 (section 6), frozen for the single Control run; it is
 not applied in I1 code and is not a validated threshold. No grouping, no event, no `strokes.json` output, no CLI, no pipeline
-change. Control (img5098_full 4500–9470) was not read for any number. Every figure below
-describes one player's clips (ADR-018) and is **not** a validation.
+change. Sections 1–6 were written before Control (img5098_full 4500–9470) was read; Control
+was then run **once** on 2026-11-23 with the frozen code and value (section 7) and changed
+nothing. Every figure below describes one player's clips (ADR-018) and is **not** a validation.
 
 Code: `engine/tennis_cv/strokes/peaks.py`. Tests: `tests/unit/test_strokes_peaks.py`.
 
@@ -254,11 +255,56 @@ Protocol (Control = img5098_full 4500–9470, same session as Development B, ADR
 3. The results are reported as "Control (same session as Development B)" and are not used to
    change the algorithm or the value.
 
-Status: **not run yet**; waits for the developer's go-ahead after the review of I1.
+Status: **run once on 2026-11-23** after the developer's go-ahead, with code `f4bdc11` and
+the hashes in `m2_3_peaks/FROZEN.md`. Full tables: `m2_3_peaks/i1c_tabelle.md` (project
+files, with the personal data). It must not be run again, and nothing was changed on its
+results.
+
+### 7.1 Control results (26 forehand/backhand targets, minimum 2.0, rule A)
+
+| Category | Targets with a peak | Without | Offset P10 / P50 / P90 (s) | abs offset P50 / P90 (s) |
+| --- | --- | --- | --- | --- |
+| internal | 19 | 7 | −0.70 / +0.03 / +0.10 | 0.10 / 0.70 |
+| run edge | 20 | 6 | −1.19 / −0.02 / +0.90 | 0.77 / 1.19 |
+| either (reference only) | 24 | 2 | −0.82 / +0.00 / +0.10 | 0.10 / 0.82 |
+
+"With a peak" means that a kept peak of the expected wrist exists, at **any** distance from
+the label: it does not mean the stroke was found. Example: 8851 counts in "either" through a
+run-edge peak 1.40 s before the label. Internal and run-edge peaks are never added into one
+rate; the "either" row is for reference only.
+
+Kept peaks per minute (near = within 1.5 s of a label, 1.60 min; pause 1.16 min): internal
+49.9 near / 26.8 pause; run edge 44.9 near / 13.8 pause.
+
+### 7.2 Reading and limits
+
+- **Well visible strokes.** 13 of the 14 `full` targets have an internal peak within 0.17 s
+  of the label (−0.13 to +0.17 s). The exception is 8851 (forehand, `full`, no internal
+  peak, nearest run-edge peak −1.40 s): not explained, recorded as an open case, not
+  investigated in I1.
+- **Poorly visible strokes.** Of the 12 `none`/`partial` targets, 6 have no internal peak
+  (4827, 6954, 7497, 7595, 7717, 8952) and others have one up to 0.87 s away (5593). The
+  abs-offset P90 of 0.70 s comes from these. The two targets with no peak at all (7595, 7717)
+  are both `none`.
+- **Lower than Development.** Internal coverage is 19/26 on Control against 49/53 on
+  Development A/B (section 5.6). Control has many `none`/`partial` targets (12 of 26); no
+  further breakdown was computed, by protocol.
+- **Pause activity, by category (never summed).** Internal peaks kept in pauses: 26.8 per
+  minute on Control against 10.6 on Development B. Run-edge peaks kept in pauses: 13.8 per
+  minute on Control against 14.1 on Development B. Internal-peak activity in pauses is
+  higher on Control; run-edge activity is about the same.
+- **Peaks in pauses.** A kept peak is not a stroke: about 27 internal and 14 run-edge peaks
+  per minute remain in pauses. Telling swings from other movements is left to the events and
+  decisions (I2, I3).
+- **Not independent.** Control is the same session as Development B (ADR-023, M2_3_DATASET
+  §2.1): unseen strokes of that session, not new conditions, not another player. It is not a
+  validation and not evidence of generalisation.
+- The minimum 2.0 remains a **candidate** value, not a validated threshold; it is still not
+  applied in I1 code.
 
 ## 8. Not done in I1
 
 - The candidate minimum is not applied in code (no `discarded` status), no `rel_to_clip` (its
   definition belongs with the relative thresholds of I3).
 - No conversion to `WristPeak` / `strokes.json` (I2), no grouping, no CLI, no pipeline change.
-- Control untouched: it is evaluated once with the frozen parameters (ADR-023).
+- Control run once with the frozen parameters (section 7); not used to change anything.

@@ -453,3 +453,7 @@ I2, not a validated threshold (weakest Development target at 2.04); it is frozen
 Control run and not changed on Control results. Run-edge peaks are kept, identifiable
 (`category = run_edge`) and always counted apart from internal peaks; I2 handles the two
 categories separately without excluding run-edge peaks in advance.
+**Outcome (2026-11-23):** Control run once with the frozen code (`f4bdc11`) and value;
+results in docs/M2_3_PEAKS.md §7 (internal peak for 19 of 26 targets, 13 of 14 `full`
+targets within 0.17 s; same session as Development B, not a validation). Nothing was changed
+on Control results. Closing I1 waits for the developer's review of PR #16.

@@ -17,7 +17,8 @@ copied as a whole (for example under `tests/fixtures/real/`).
 m2_1/pose_outputs/out_<video>/        pose.json, timemap.json, report.json (13 videos)
 m2_1/MANIFEST.md, labels.csv          M2.1 dataset (unchanged)
 m2_3_labels/                          img5098_full: MANIFEST.md, labels.csv, annotated.csv
-m2_3_labels/labels_2026-11-22_originale.csv   labels before the I0 correction
+m2_3_labels/labels_2026-11-22_originale.csv   labels before the I0 corrections
+m2_3_labels/labels_2026-11-23_prima_Q3.csv    after Q2, before Q3
 m2_3_dataset/dev_a/                   MANIFEST.md, labels.csv
 m2_3_dataset/dev_b/                   MANIFEST.md, labels.csv, annotated.csv
 m2_3_dataset/control/                 MANIFEST.md, labels.csv, annotated.csv
@@ -35,7 +36,7 @@ Video_Project_2) are not used for any number.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Development A | img4893, img4894, img5098_1, img4912_2min, img4912_m3 (whole pose files) | 17 | 12 | 0 | 0 | 10 / 0 | none (coverage unknown) | 82 frames (img4893 674–756) |
 | Development B | img5098_full 0–4499 | 11 | 13 | 4 | 0 | 2 / 7 | 0–4499, `all`, A: exhaustive | 72 frames (4128–4200) |
-| Control | img5098_full 4500–9470 | 13 | 13 | 4 | 3 | 4 / 8 | 4500–9470, `all`, A: exhaustive | **35 frames (5161–5196, Q3 open)** |
+| Control | img5098_full 4500–9470 | 13 | 13 | 4 | 3 | 4 / 8 | 4500–9470, `all`, A: exhaustive | 66 frames (8952–9018) |
 | Excluded | img5098 (22 s cut) | — | — | — | — | — | — | — |
 
 Totals: 79 forehand/backhand targets (29 + 24 + 26), 8 `other`, 3 volleys, 0 serves, 0
@@ -57,9 +58,9 @@ report.
   sessions: IMG_4893 + IMG_4894, IMG_5098 + IMG_5098_1, IMG_4912). Control therefore measures
   unseen strokes in known conditions, not new conditions. The confirmation video of ADR-021
   stays the only independent test. Session membership is inferred, not recorded (section 6).
-- **Radius check.** With D = 35 frames in Control, `2r + W < D` needs W < 0.17 s at
-  r = 0.5 s and W < 0.57 s at r = 0.3 s, so large radii will be `not_interpretable` on
-  Control until Q3 is resolved.
+- **Radius check.** Smallest D is 66 frames (2.2 s, Control) after the Q3 correction:
+  `2r + W < D` needs W < 1.2 s at r = 0.5 s. Before the correction it was 35 frames
+  (W < 0.17 s at r = 0.5 s).
 
 ## 3. Results of `eval_strokes.py check` (2026-11-23)
 
@@ -90,24 +91,31 @@ Lesson for the dataset: an interval declared exhaustive was not exhaustive for `
 evaluation trusts the declaration (P2); false candidates judged `unlabelled` must therefore
 be reviewed, never counted automatically as detector errors.
 
-### Q3 — forehand at img5098_full 5161: **open, label unchanged**
+### Q3 — forehand at img5098_full 5161: **moved to 5109** (confirmed by the developer)
 
-The 22 s overlay starts at full 5169, so the frames around 5161 can be checked only on the
-full video, which is on the developer's computer (not reachable on 2026-11-23). What the
-pose alone shows, as a hint and not as evidence of what happened:
+Checked on the overlay of the whole video (the 22 s cut starts at 5169), frame numbers
+matched with the `#N` printed on the overlay (`evidenze/q3_1…`, `q3_2…`, `q3_3…`):
 
-- no pose on 5124–5135 and 5139;
-- 5140–5168: the hips move steadily to the image left (right hip x 695 → 449 px), both
-  wrists stay at hip height and move with them; right wrist visibility falls from 0.45 to
-  0.12 (hidden), left 0.20–0.51; no fast wrist movement relative to the body around 5161;
-- from about 5175 the right wrist rises and becomes visible (0.6–0.95), the backswing of the
-  forehand labelled at 5196.
+- 5060–5106: the player runs in from the left with the racket high and leaves through the
+  right edge of the image;
+- 5108–5112, at the right edge: the racket swings high and a ball streak leaves towards the
+  left (5109–5112): a forehand-side stroke played almost out of frame; contact not visible;
+- 5114–5132: out of frame;
+- 5137–5169: walks back; **at 5161 the player stands in the ready position, racket low, no
+  swing**;
+- 5175–5197: the forehand labelled at 5196.
 
-This looks like the player moving sideways towards the 5196 ball rather than a separate
-stroke, but the pose cannot show the ball or the racket and visibility is low. Possible
-outcomes still open: distinct stroke, preparation of 5196, wrong label, not determinable.
-The label stays as it is until the video is checked; Control's minimum gap is reported with
-this caveat.
+Reading: the label belonged to the stroke at the edge, about 50 frames late; there is no
+separate stroke at 5161. The developer agreed (2026-11-23). Changed
+`img5098_full,5161,forehand,A,partial` → `img5098_full,5109,forehand,A,partial` with a note
+(frame estimated: the contact is not visible), in `m2_3_labels/labels.csv` and
+`m2_3_dataset/control/labels.csv`; the file before the change is kept. `check` after the
+change: Control OK (33 labels), whole img5098_full OK (61 labels). Control's minimum gap goes
+from 35 to 66 frames.
+
+The pose alone had suggested lateral movement at 5161 (no fast wrist motion, right wrist
+visibility 0.12–0.45); the video confirmed it and also showed the real stroke, which the
+pose could not (the player is out of frame there).
 
 ## 5. What the files do not contain
 
@@ -133,6 +141,4 @@ No model, no feature and no contract field is added now. Checked against what ex
 
 ## 7. Next step
 
-I1 (peak finding) starts only after the developer's explicit approval. Before I3 (choice of
-thresholds) Q3 should be closed, because it decides whether Control's minimum gap is 35 or
-66 frames.
+I1 (peak finding) starts only after the developer's explicit approval. Q2 and Q3 are closed.

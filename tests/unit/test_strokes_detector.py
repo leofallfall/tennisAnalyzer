@@ -456,3 +456,62 @@ def test_real_development_b_ignores_control_frames(tmp_path: Path) -> None:
         return dump_strokes(doc)
 
     assert run(poses) == run(tampered)
+
+
+def _tamper_before(poses: PoseSequence, first: int) -> PoseSequence:
+    """Frames before ``first`` changed (motion, torso size, missing poses); later untouched."""
+    frames = []
+    for f in poses.frames:
+        if f.frame_index >= first:
+            frames.append(f)
+        elif f.frame_index % 7 == 0:
+            frames.append(f.model_copy(update={"detected": False, "keypoints": []}))
+        else:
+            kps = [
+                kp.model_copy(
+                    update={
+                        "x": kp.x + (0.3 * (f.frame_index % 3) if "wrist" in kp.name else 0.0),
+                        "y": kp.y - (0.05 if "shoulder" in kp.name else 0.0),
+                    }
+                )
+                for kp in f.keypoints
+            ]
+            frames.append(f.model_copy(update={"keypoints": kps}))
+    return poses.model_copy(update={"frames": frames})
+
+
+def test_first_proxy_frame_result_ignores_earlier_frames() -> None:
+    first = 60
+    tm = _iphone_timemap(330)
+    n = tm.summary.proxy_frame_count
+    poses = _poses(right=_sum(_bell(first + 8, width=4.0), _bell(200)), n=n)
+    tampered = _tamper_before(poses, first)
+
+    def run(ps: PoseSequence) -> StrokesFile:
+        return detect(
+            ps, pose_file="pose.json", pose_sha256="0" * 64, timemap=tm,
+            timemap_file="timemap.json", timemap_sha256="1" * 64, now=NOW,
+            first_proxy_frame=first, params=ONE_PEAK_REF,
+        )  # fmt: skip
+
+    a, b = run(poses), run(tampered)
+    assert check_invariants(a) == [] and a.time_basis.value == "source"
+    assert dump_strokes(a) == dump_strokes(b)
+    assert all(p.proxy_frame >= first for p in a.wrist_peaks)
+    assert [e.time.ref_proxy_frame for e in a.events] == [first + 8, 200]
+    assert a.params["input"] == {"last_proxy_frame": None, "first_proxy_frame": first}
+    # times are those of the whole file
+    whole = build_timebase(poses, tm)
+    ref = next(e for e in a.events if e.time.ref_proxy_frame == 200).time.ref_t_s
+    assert ref == pytest.approx(float(whole.times_s[whole.proxy_frames == 200][0]), abs=1e-4)
+    # sensitive: without the cut, the tampering changes peaks after the first frame
+    fa = _detect(poses, tm, None)
+    fb = _detect(tampered, tm, None)
+    near = [p.model_dump() for p in fa.wrist_peaks if first <= p.proxy_frame < first + 30]
+    near_b = [p.model_dump() for p in fb.wrist_peaks if first <= p.proxy_frame < first + 30]
+    assert near != near_b
+
+
+def test_params_input_has_no_first_key_when_unused() -> None:
+    doc = _run(_poses(right=_bell(60)))
+    assert doc.params["input"] == {"last_proxy_frame": None}

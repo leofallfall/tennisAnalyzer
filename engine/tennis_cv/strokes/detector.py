@@ -615,9 +615,17 @@ def _coverage(
 
 
 def truncate_inputs(
-    poses: PoseSequence, timemap: TimeMap | None, last_proxy_frame: int
+    poses: PoseSequence,
+    timemap: TimeMap | None,
+    last_proxy_frame: int | None,
+    first_proxy_frame: int | None = None,
 ) -> tuple[PoseSequence, TimeMap | None]:
-    """Inputs as if the video ended at ``last_proxy_frame`` (inclusive).
+    """Inputs as if the video ended at ``last_proxy_frame`` and/or started at
+    ``first_proxy_frame`` (both inclusive; ``None`` = no cut on that side).
+
+    Start: pose frames before ``first_proxy_frame`` are dropped; the time map stays whole
+    (it is indexed by proxy frame, so every kept frame keeps its time and the map stays
+    consistent), and the time base, signals and peaks start at the first kept frame.
 
     Pose frames after it are dropped. A consistent time map is cut to the same proxy
     frames and to the source frames they show (``proxy_to_source`` prefix, source times up
@@ -626,13 +634,19 @@ def truncate_inputs(
     of the whole file (duplicated / dropped frames, errors) are not used by the time base
     and are left as they are. An inconsistent map is passed unchanged: it stays unusable
     and the time basis stays proxy, as on the whole file."""
-    if last_proxy_frame < 0:
-        raise ValueError("last_proxy_frame must be >= 0")
-    frames = [f for f in poses.frames if f.frame_index <= last_proxy_frame]
+    for name, v in (
+        ("last_proxy_frame", last_proxy_frame),
+        ("first_proxy_frame", first_proxy_frame),
+    ):
+        if v is not None and v < 0:
+            raise ValueError(f"{name} must be >= 0")
+    lo = 0 if first_proxy_frame is None else first_proxy_frame
+    hi = math.inf if last_proxy_frame is None else last_proxy_frame
+    frames = [f for f in poses.frames if lo <= f.frame_index <= hi]
     if not frames:
-        raise ValueError(f"no pose frame at or before frame {last_proxy_frame}")
+        raise ValueError(f"no pose frame between frames {first_proxy_frame} and {last_proxy_frame}")
     cut = poses.model_copy(update={"frames": frames})
-    if timemap is None or check_timemap(poses, timemap):
+    if last_proxy_frame is None or timemap is None or check_timemap(poses, timemap):
         return cut, timemap
     n_proxy = min(frames[-1].frame_index + poses.frame_stride, len(timemap.proxy_to_source))
     mapping = timemap.proxy_to_source[:n_proxy]
@@ -661,6 +675,7 @@ def detect(
     params: DetectorParams | None = None,
     now: datetime | None = None,
     last_proxy_frame: int | None = None,
+    first_proxy_frame: int | None = None,
 ) -> StrokesFile:
     """Run the detector on one pose sequence; the result passes every invariant.
 
@@ -670,11 +685,12 @@ def detect(
     prominences, quality windows, regions and coverage never see a later frame. Frame
     numbers and times stay those of the original file; the input hashes and
     ``inputs.pose.frames`` describe the whole files; the limit is recorded in
-    ``params.input``. Without a limit nothing changes."""
+    ``params.input``. Without a limit nothing changes. ``first_proxy_frame`` cuts the
+    start the same way (Control = img5098_full 4500-9470): no earlier frame is used."""
     params = params or DetectorParams()
     all_frames = len(poses.frames)
-    if last_proxy_frame is not None:
-        poses, timemap = truncate_inputs(poses, timemap, last_proxy_frame)
+    if last_proxy_frame is not None or first_proxy_frame is not None:
+        poses, timemap = truncate_inputs(poses, timemap, last_proxy_frame, first_proxy_frame)
     tb = build_timebase(poses, timemap, params.timebase)
     scale = torso_scale(poses, tb, params.scale, params.smoothing)
     vels: dict[Side, KeypointVelocity] = {}
@@ -732,6 +748,8 @@ def detect(
         tm_input = TimemapInput(file=timemap_file, sha256=timemap_sha256, status=tb.map_status)
     p_dict = params.as_dict()
     p_dict["input"] = {"last_proxy_frame": last_proxy_frame}
+    if first_proxy_frame is not None:  # key only when used: earlier files stay identical
+        p_dict["input"]["first_proxy_frame"] = first_proxy_frame
     return StrokesFile(
         schema_=SCHEMA_NAME,
         schema_version=SCHEMA_VERSION,
@@ -778,6 +796,7 @@ def detect_dir(
     params: DetectorParams | None = None,
     now: datetime | None = None,
     last_proxy_frame: int | None = None,
+    first_proxy_frame: int | None = None,
 ) -> StrokesFile:
     """Detector on ``pose_dir/pose.json`` (+ ``timemap.json`` when present)."""
     d = Path(pose_dir)
@@ -795,4 +814,5 @@ def detect_dir(
         params=params,
         now=now,
         last_proxy_frame=last_proxy_frame,
+        first_proxy_frame=first_proxy_frame,
     )

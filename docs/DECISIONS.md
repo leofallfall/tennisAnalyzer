@@ -597,7 +597,10 @@ developer on a sensitivity table; observability rules from I2 unchanged.
   in Italian words, no percentages or scores. Codes stay the stable identifiers.
 - G 0.3 s, the 1.0 s chain rule, the minimum prominence 2.0 and the schema are unchanged.
 - The regression report on Control (ADR-025) runs once, after the values are confirmed, and
-  never changes them.
+  never changes them. It uses `--first-proxy-frame 4500`, so the Control is detected from
+  its own frames only (as Development B from 0-4499), clip reference height included.
+- **Values confirmed by the developer on 2026-11-24:** t_reject 0.45, t_accept 0.70, initial
+  provisional parameters, not validated thresholds.
 **Alternatives:** absolute speed thresholds (amplitude varies up to 2x with tracking);
 rel_to_clip from the median (less stable across clips) or from prominence (least stable);
 one threshold only (no "to check" band; every borderline stroke would be lost or flagged);

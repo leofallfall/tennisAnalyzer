@@ -215,6 +215,10 @@ Output = **candidate events, not validated strokes**. `producer.status = experim
   on later frames (test `test_last_proxy_frame_result_ignores_later_frames`). Frame
   numbers, times, input hashes and `inputs.pose.frames` stay those of the original files.
   Development B uses 4499, so nothing of the Control part of img5098_full is read.
+  `--first-proxy-frame` (recorded as `params.input.first_proxy_frame`, only when used) cuts
+  the start the same way (pose frames before it are dropped; the time map, indexed by proxy
+  frame, stays whole): the Control (4500-9470) uses none of the Development B frames, its
+  clip reference height included (test `test_first_proxy_frame_result_ignores_earlier_frames`).
 - G was chosen on Development A/B only (ADR-026): gaps between consecutive kept peaks within
   ±0.5 s of a target label (same gesture) p50 0.17 s, p90 0.27 s, p95 0.33 s, max 0.57 s;
   gap between the peaks of consecutive labels min 0.57 s, p5 0.62 s, p10 0.94 s. Both

@@ -378,6 +378,22 @@ def test_out_of_frame_peak_is_discarded_and_the_stretch_not_assessable() -> None
     assert len(_run(poses).events) == 1
 
 
+def test_player_at_the_side_edge_is_out_of_frame() -> None:
+    def to_edge(name: str, x: float, y: float) -> tuple[float, float]:
+        return (x + 0.45, y) if name.endswith("shoulder") else (x, y)  # mid-shoulder x 0.95
+
+    poses = _edit(_poses(right=_bell(60)), range(45, 76), to_edge)
+    doc = _run(poses)
+    assert doc.events == []
+    assert any(p.reasons == [R_OUT_OF_FRAME] for p in doc.wrist_peaks)
+    assert doc.coverage is not None
+    assert any(
+        RegionReason.OUT_OF_FRAME in s.reasons and s.start_proxy_frame <= 60 <= s.end_proxy_frame
+        for s in doc.coverage.not_assessable
+    )
+    assert len(_run(poses, DetectorParams(min_kept_peaks=1, edge_margin=0.0)).events) == 1
+
+
 def test_short_out_of_frame_blip_still_shows_a_stretch_of_min_duration() -> None:
     poses = _edit(_poses(right=_bell(60)), range(58, 63), _legs_out)  # 5 frames only
     doc = _run(poses, DetectorParams(min_kept_peaks=1, out_of_frame_min_keypoints=4))
@@ -409,7 +425,7 @@ def test_tiny_torso_is_a_tracking_jump() -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [("min_event_gap_s", 0.0), ("min_torso_ratio", 1.0), ("min_torso_ratio", 0.0),
-     ("out_of_frame_min_keypoints", 0), ("out_of_frame_margin", 0.5)],
+     ("out_of_frame_min_keypoints", 0), ("out_of_frame_margin", 0.5), ("edge_margin", 0.5)],
 )  # fmt: skip
 def test_review_params_are_checked(field: str, value: float) -> None:
     with pytest.raises(ValueError):

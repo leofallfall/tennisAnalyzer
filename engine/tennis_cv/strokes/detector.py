@@ -141,7 +141,7 @@ def _t(p: _Peak) -> float:
 
 
 ALGORITHM = "tpa.stroke_detector"
-ALGORITHM_VERSION = "0.3.0-v1r2"
+ALGORITHM_VERSION = "0.3.1-v1r3"
 TORSO_KEYPOINTS = ("left_shoulder", "right_shoulder", "left_hip", "right_hip")
 _SHOULDERS = ("left_shoulder", "right_shoulder")
 _HIPS = ("left_hip", "right_hip")
@@ -187,8 +187,9 @@ RULES: tuple[Rule, ...] = (
                      "on someone or something else (provisional)"),
     Rule(code=R_OUT_OF_FRAME, kind=RuleKind.DISCARD_PEAK,
          description="In most samples of the peak quality window at least "
-                     "tracking.out_of_frame_min_keypoints keypoints are outside the image: "
-                     "the player is (partly) out of frame (provisional)"),
+                     "tracking.out_of_frame_min_keypoints keypoints are outside the image, or "
+                     "the mid-shoulder point is within tracking.edge_margin of the left or "
+                     "right edge: the player is (partly) out of frame (provisional)"),
     Rule(code=R_GROUPING, kind=RuleKind.INFO,
          description="Kept peaks of both wrists chained in time order while consecutive "
                      "peaks are at most G apart"),
@@ -247,6 +248,7 @@ class DetectorParams:
     min_event_gap_s: float = 1.0
     out_of_frame_min_keypoints: int = 9
     out_of_frame_margin: float = 0.01
+    edge_margin: float = 0.075
     min_torso_ratio: float = 0.4
     smoothing: SmoothingParams = field(default_factory=SmoothingParams)
     scale: ScaleParams = field(default_factory=ScaleParams)
@@ -274,6 +276,8 @@ class DetectorParams:
             raise ValueError("min_kept_peaks must be >= 1")
         if not 1 <= self.out_of_frame_min_keypoints <= 33:
             raise ValueError("out_of_frame_min_keypoints must be in [1, 33]")
+        if not 0 <= self.edge_margin < 0.5:
+            raise ValueError("edge_margin must be in [0, 0.5)")
         if not 0 <= self.out_of_frame_margin < 0.5:
             raise ValueError("out_of_frame_margin must be in [0, 0.5)")
         if self.min_torso_ratio >= 1:
@@ -298,6 +302,7 @@ class DetectorParams:
             "tracking": {
                 "out_of_frame_min_keypoints": self.out_of_frame_min_keypoints,
                 "out_of_frame_margin": self.out_of_frame_margin,
+                "edge_margin": self.edge_margin,
                 "min_torso_ratio": self.min_torso_ratio,
                 "torso_ratio_reference": "median GOOD torso length of the clip",
             },
@@ -377,7 +382,7 @@ def _region(s: _Samples, tb: TimeBase, lo: int, hi: int) -> Region:
 class _Tracking:
     """Per time-base sample: tracking that cannot be trusted (V1 review 1, ADR-029)."""
 
-    out_of_frame: BoolArray  # >= out_of_frame_min_keypoints keypoints outside the image
+    out_of_frame: BoolArray  # many keypoints outside the image, or shoulders at the edge
     jump: BoolArray  # torso < min_torso_ratio x clip median: skeleton on something else
     torso_ref_px: float | None  # clip median of the GOOD torso lengths
 
@@ -390,7 +395,9 @@ def _tracking(
     poses: PoseSequence, tb: TimeBase, scale: TorsoScale, params: DetectorParams
 ) -> _Tracking:
     """Out of frame: normalised coordinates outside ``[margin, 1 - margin]`` (MediaPipe
-    extrapolates keypoints it cannot see). Jump: torso length (mid-shoulders to mid-hips,
+    extrapolates keypoints it cannot see), or the mid-shoulder point within ``edge_margin``
+    of the left or right edge (MediaPipe often keeps the points of a player leaving the frame
+    just inside it). Jump: torso length (mid-shoulders to mid-hips,
     whatever the visibility) below ``min_torso_ratio`` times the median of the GOOD
     measurements of the clip; no reference (no GOOD measurement) -> never a jump."""
     by_index = {f.frame_index: f for f in poses.frames}
@@ -406,6 +413,9 @@ def _tracking(
         kp = {k.name: k for k in f.keypoints}
         outside = sum(1 for k in f.keypoints if not (lo_m < k.x < hi_m and lo_m < k.y < hi_m))
         out[i] = outside >= params.out_of_frame_min_keypoints
+        if _SHOULDERS[0] in kp and _SHOULDERS[1] in kp:  # at the left or right edge
+            mid_x = (kp[_SHOULDERS[0]].x + kp[_SHOULDERS[1]].x) / 2
+            out[i] |= not params.edge_margin <= mid_x <= 1.0 - params.edge_margin
         if all(n_ in kp for n_ in TORSO_KEYPOINTS):
             sx = (kp[_SHOULDERS[0]].x + kp[_SHOULDERS[1]].x) / 2 * w
             sy = (kp[_SHOULDERS[0]].y + kp[_SHOULDERS[1]].y) / 2 * h

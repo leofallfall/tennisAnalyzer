@@ -263,7 +263,7 @@ Development B 20/24 (15 flagged, 5 to check), none discarded; Development B *col
 segnalato* 25 = 15 target + 3 other strokes (serves/feeds) + 6 false + 1 ambiguous; *da
 verificare* 40 (34 false); 26 discarded.
 
-## 11. V1 review 1 (ADR-029, detector `0.3.0-v1r2`)
+## 11. V1 reviews 1-2 (ADR-029, ADR-030, detector `0.3.1-v1r3`)
 
 Three rules added after the developer's first hand review; schema 1.1 unchanged, new codes
 declared in `rules`, new values in `params` (`grouping.min_event_gap_s`, section `tracking`).
@@ -271,7 +271,7 @@ declared in `rules`, new values in `params` (`grouping.min_event_gap_s`, section
 | step | rule | parameter |
 | --- | --- | --- |
 | Discard (after prominence) | `peak_tracking_jump`: torso shorter than `min_torso_ratio` × clip median GOOD torso in most of the peak quality window (skeleton on someone or something else) | `tracking.min_torso_ratio` = **0.4, provisional** |
-| Discard (after prominence) | `peak_out_of_frame`: at least `out_of_frame_min_keypoints` of 33 keypoints outside `[margin, 1 − margin]` in most of the peak quality window | `tracking.out_of_frame_min_keypoints` = **9**, `tracking.out_of_frame_margin` = 0.01, provisional |
+| Discard (after prominence) | `peak_out_of_frame`: at least `out_of_frame_min_keypoints` of 33 keypoints outside `[margin, 1 − margin]`, or (ADR-030) the mid-shoulder x within `edge_margin` of the left or right edge, in most of the peak quality window | `tracking.out_of_frame_min_keypoints` = **9**, `tracking.out_of_frame_margin` = 0.01, `tracking.edge_margin` = **0.075** (ADR-030), provisional |
 | Reject | `reject_near_stronger_event`: a stronger non-rejected event less than the gap away (height peak not *descending*, i.e. not `vy > \|vx\|`; then accepted > uncertain, determined wrist, higher rel_to_clip of the height peak); trace input `stronger_event` | `grouping.min_event_gap_s` = **1.0 s, provisional** |
 | Coverage | samples flagged by either tracking rule, plus ±max(fit half-window, `min_duration_s`/2) around each peak discarded by them; regions torso + both wrists, reason `out_of_frame` | — |
 

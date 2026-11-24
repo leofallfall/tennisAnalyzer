@@ -2,6 +2,8 @@ import type {
   Analysis,
   AnalysisVideo,
   NotAssessableStretch,
+  RegionVisibility,
+  RegionVisibilityState,
   StrokeEvent,
   StrokesView,
 } from '@tpa/contracts'
@@ -257,6 +259,7 @@ function StrokesBody({
           Mostra scartati
         </label>
       </div>
+      <RegionLegend />
 
       <ol className="max-h-80 divide-y overflow-y-auto rounded-md border text-sm">
         {items.length === 0 && (
@@ -317,12 +320,14 @@ function EventRow({
               {formatClock(e.window_end_s, 2)}
             </span>
           )}
-          {e.state !== 'flagged' &&
-            e.reasons.map((r) => (
-              <span key={r} className="text-xs text-muted-foreground">
-                {r}
-              </span>
-            ))}
+          {e.state !== 'flagged' && e.reasons.length > 0 && (
+            <span className="flex flex-col text-xs text-muted-foreground" data-testid="reasons">
+              {e.reasons.map((r) => (
+                <span key={r}>{r}</span>
+              ))}
+            </span>
+          )}
+          <RegionStrip regions={e.regions} />
         </span>
       </button>
     </li>
@@ -359,5 +364,83 @@ function StretchRow({
         </span>
       </button>
     </li>
+  )
+}
+
+const REGION_DOT: Record<RegionVisibilityState, string> = {
+  good: 'border-success bg-success',
+  low_but_usable:
+    'border-warning bg-[linear-gradient(90deg,var(--color-warning)_50%,transparent_50%)]',
+  not_observable: 'border-dashed border-muted-foreground bg-transparent',
+}
+
+const REGION_SHORT: Record<RegionVisibilityState, string> = {
+  good: '',
+  low_but_usable: 'bassa',
+  not_observable: 'non osservabile',
+}
+
+function RegionDot({ state }: { state: RegionVisibilityState }) {
+  return (
+    <span
+      aria-hidden
+      className={cn('inline-block size-2.5 shrink-0 rounded-full border-2', REGION_DOT[state])}
+    />
+  )
+}
+
+function RegionLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+      <span>Visibilità delle parti del corpo intorno al colpo (separata dallo stato):</span>
+      {(['good', 'low_but_usable', 'not_observable'] as const).map((st) => (
+        <span key={st} className="flex items-center gap-1">
+          <RegionDot state={st} />
+          {st === 'good'
+            ? 'buona'
+            : st === 'low_but_usable'
+              ? 'bassa ma usabile'
+              : 'non osservabile'}
+        </span>
+      ))}
+      <span>corsivo = parte non usata dal colpo</span>
+    </div>
+  )
+}
+
+/** Four regions of one event, compact; state and reasons of the event stay apart. */
+function RegionStrip({ regions }: { regions: RegionVisibility[] }) {
+  if (regions.length === 0) return null
+  return (
+    <span
+      className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground"
+      aria-label="Visibilità delle parti del corpo"
+      data-testid="regions"
+    >
+      <span className="font-medium">Visibilità:</span>
+      {regions.map((r) => {
+        const text = `${r.label}: ${r.state_label}${r.used ? '' : ' (non usata dal colpo)'}${
+          r.reasons.length ? ` (${r.reasons.join(', ')})` : ''
+        }`
+        return (
+          <span
+            key={r.region}
+            title={text}
+            aria-label={text}
+            data-region={r.region}
+            data-region-state={r.state}
+            className={cn('flex items-center gap-1', !r.used && 'italic opacity-70')}
+          >
+            <RegionDot state={r.state} />
+            {r.label}
+            {REGION_SHORT[r.state] && (
+              <span className={r.state === 'not_observable' ? 'text-foreground' : undefined}>
+                · {REGION_SHORT[r.state]}
+              </span>
+            )}
+          </span>
+        )
+      })}
+    </span>
   )
 }

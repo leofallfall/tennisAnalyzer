@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from functools import partial
 from pathlib import Path
 
@@ -16,6 +17,7 @@ from tennis_worker.main import Worker
 from .conftest import NoPersonEstimator, SyntheticPoseEstimator
 from .test_api import upload
 
+FIXTURE = Path(__file__).parents[1] / "fixtures" / "strokes" / "example_v1_0.json"
 STATES = {"flagged", "to_check", "discarded"}
 
 
@@ -123,3 +125,36 @@ def test_strokes_endpoint_errors(client: TestClient, settings: Settings, basic_v
     assert r.status_code == 404 and r.json()["error"]["code"] == "video_not_found"
     r = client.get(f"/api/analyses/{aid}/videos/{vid}/strokes")
     assert r.json()["error"]["code"] == "strokes_not_available"
+
+
+def test_region_visibility_per_event(
+    client: TestClient, settings: Settings, basic_video: Path
+) -> None:
+    """The four regions of each event, as written in strokes.json, kept apart from the state
+    and its reasons (an existing strokes.json is read as it is)."""
+    aid, vid = _processed(client, _worker(settings, client, SyntheticPoseEstimator), basic_video)
+    out_dir = analysis_video_dir(settings.storage_dir, aid, vid)
+    (out_dir / "strokes.json").write_bytes(FIXTURE.read_bytes())
+    src = {e["id"]: e for e in json.loads(FIXTURE.read_text())["events"]}
+    view = client.get(f"/api/analyses/{aid}/videos/{vid}/strokes").json()
+    assert view["events"]
+    order = ["torso", "left_wrist", "right_wrist", "legs"]
+    labels = {
+        "good": "buona",
+        "low_but_usable": "bassa ma usabile",
+        "not_observable": "non osservabile",
+    }
+    seen = set()
+    for e in view["events"]:
+        file_event = src[e["id"]]
+        assert [r["region"] for r in e["regions"]] == order
+        for r in e["regions"]:
+            region = file_event["regions"][r["region"]]
+            assert r["state"] == region["state"]
+            assert r["state_label"] == labels[r["state"]]
+            assert r["used"] == (r["region"] in file_event["reliability"]["regions_used"])
+            assert len(r["reasons"]) == len(region["reasons"])
+            seen.add(r["state"])
+        # state and reasons are not mixed with region visibility
+        assert all(isinstance(x, str) for x in e["reasons"])
+    assert len(seen) >= 2, "fixture should exercise more than one region state"

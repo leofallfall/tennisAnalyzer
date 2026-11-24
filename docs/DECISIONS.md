@@ -638,6 +638,14 @@ their state and reason, and jump to them. No correction, no forehand/backhand ye
   reference frame (window start when the wrist is undetermined). *Scartati* hidden by
   default, shown with a toggle. Counts only, no percentages. Stroke texts in Italian, as in
   `states.py`; the rest of the UI stays English for now.
+- Region visibility per stroke: the four regions already recorded in `strokes.json`
+  (`regions`, `reliability.regions_used`) are exposed by `states.region_views` and the API
+  (`regions` of each event, fixed order busto, polso sinistro, polso destro, gambe) and
+  shown in each stroke row as a separate "Visibilità" line: filled green dot = *buona*,
+  half amber = *bassa ma usabile*, dashed empty = *non osservabile* (state words also in
+  text and tooltip, with the reasons); regions the event did not use in italics. A legend
+  says it is separate from the stroke state; the state and its reasons stay in their own
+  block.
 - `capabilities` strokes: experimental.
 **Alternatives:** detecting inside the GET request (about 4 s per 5 minutes of video: too
 slow for a request, against "API must not run long CV work"); a backfill script only (the
@@ -646,4 +654,4 @@ developer would need a terminal for each old analysis); re-running the whole ana
 the player's timeline).
 **Consequences:** `report.json` (engine pipeline report) still lists `stroke_detection`
 under `not_performed`, because the pipeline itself does not run it; the AI Evidence Pack
-does not use strokes yet. Region visibility per stroke (ROADMAP step 4) is not shown yet.
+does not use strokes yet.

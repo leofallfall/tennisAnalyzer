@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from tennis_api.schemas import NotAssessableOut, StrokeEventOut, StrokesOut
+from tennis_api.schemas import (
+    NotAssessableOut,
+    RegionVisibilityOut,
+    StrokeEventOut,
+    StrokesOut,
+)
 from tennis_cv.strokes.artifact import ProducerStatus, StrokesFile, load_strokes
 from tennis_cv.strokes.states import STATE_LABEL, V1State, event_view, stretch_view
 
@@ -57,6 +62,17 @@ def strokes_view(path: Path, analysis_id: str, video_id: str) -> StrokesOut:
                 window_end_s=t(hi),
                 reasons=list(v.reasons),
                 reason_codes=list(e.reasons),
+                regions=[
+                    RegionVisibilityOut(
+                        region=r.region.value,
+                        label=r.label,
+                        state=r.state.value,
+                        state_label=r.state_label,
+                        used=r.used,
+                        reasons=list(r.reasons),
+                    )
+                    for r in v.regions
+                ],
             )
         )
     stretches = []

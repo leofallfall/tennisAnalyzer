@@ -6,6 +6,8 @@ Read-only view of a ``strokes.json``: it adds no measurement and changes no deci
 * ``to_check`` (*da verificare*): an ``uncertain`` event; the reasons say why.
 * ``discarded`` (*scartato*): a ``rejected`` event; hidden by default in the app, shown on
   request, never deleted.
+* Region visibility (busto, polsi, gambe) per event is shown apart from the state and its
+  reasons: it says how well each part of the body was seen, not whether it is a stroke.
 * ``not_assessable`` (*non valutabile*): a ``coverage`` stretch: **insufficient evidence to
   detect strokes, not absence of strokes**.
 
@@ -24,6 +26,7 @@ from tennis_cv.strokes.artifact import (
     EventStatus,
     RegionName,
     RegionReason,
+    RegionState,
     StrokesFile,
 )
 
@@ -76,20 +79,35 @@ REASON_TEXT: dict[str, str] = {
     ),
 }
 
-_REGION_TEXT = {
+REGION_TEXT: dict[RegionName, str] = {
     RegionName.TORSO: "busto",
     RegionName.LEFT_WRIST: "polso sinistro",
     RegionName.RIGHT_WRIST: "polso destro",
     RegionName.LEGS: "gambe",
 }
-_STRETCH_REASON_TEXT = {
+REGION_REASON_TEXT: dict[RegionReason, str] = {
     RegionReason.NO_POSE: "giocatore non rilevato",
     RegionReason.BELOW_THRESHOLD: "punti del corpo visti male",
     RegionReason.OUT_OF_FRAME: "fuori inquadratura",
     RegionReason.BROKEN_RUN: "visibilità a tratti troppo brevi",
     RegionReason.IRREGULAR_INTERVAL: "fotogrammi irregolari",
 }
+REGION_STATE_LABEL: dict[RegionState, str] = {
+    RegionState.GOOD: "buona",
+    RegionState.LOW_BUT_USABLE: "bassa ma usabile",
+    RegionState.NOT_OBSERVABLE: "non osservabile",
+}
 NOT_ASSESSABLE_NOTE = "qui i colpi non si possono rilevare (non vuol dire che non ci siano)"
+
+
+@dataclass(frozen=True)
+class RegionView:
+    region: RegionName
+    label: str  # e.g. "polso sinistro"
+    state: RegionState
+    state_label: str  # "buona" / "bassa ma usabile" / "non osservabile"
+    used: bool  # in reliability.regions_used
+    reasons: tuple[str, ...]  # in words
 
 
 @dataclass(frozen=True)
@@ -99,6 +117,7 @@ class EventView:
     t_s: float | None  # reference time; None when the wrist is undetermined
     window_t_s: tuple[float, float]
     reasons: tuple[str, ...]  # in words, rule order
+    regions: tuple[RegionView, ...]  # fixed order: torso, left wrist, right wrist, legs
 
 
 @dataclass(frozen=True)
@@ -109,6 +128,25 @@ class StretchView:
     reason: str  # in words
 
 
+def region_views(e: CandidateEvent) -> tuple[RegionView, ...]:
+    """Visibility of the four regions of an event, as recorded by the detector."""
+    used = set(e.reliability.regions_used)
+    out = []
+    for name in RegionName:
+        r = e.regions.get(name)
+        out.append(
+            RegionView(
+                region=name,
+                label=REGION_TEXT[name],
+                state=r.state,
+                state_label=REGION_STATE_LABEL[r.state],
+                used=name in used,
+                reasons=tuple(REGION_REASON_TEXT[x] for x in r.reasons),
+            )
+        )
+    return tuple(out)
+
+
 def event_view(e: CandidateEvent) -> EventView:
     return EventView(
         event_id=e.id,
@@ -116,12 +154,13 @@ def event_view(e: CandidateEvent) -> EventView:
         t_s=e.time.ref_t_s,
         window_t_s=e.time.window_t_s,
         reasons=tuple(REASON_TEXT.get(code, code) for code in e.reasons),
+        regions=region_views(e),
     )
 
 
 def stretch_view(s: CoverageStretch) -> StretchView:
-    regions = ", ".join(_REGION_TEXT[r] for r in s.regions)
-    causes = ", ".join(_STRETCH_REASON_TEXT[r] for r in s.reasons)
+    regions = ", ".join(REGION_TEXT[r] for r in s.regions)
+    causes = ", ".join(REGION_REASON_TEXT[r] for r in s.reasons)
     return StretchView(
         start_t_s=s.start_t_s,
         end_t_s=s.end_t_s,

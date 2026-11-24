@@ -257,6 +257,19 @@ export interface AnalysisResults {
 /** Personal V1 states (engine/tennis_cv/strokes/states.py, ADR-025/027). */
 export type StrokeState = 'flagged' | 'to_check' | 'discarded'
 
+export type RegionVisibilityState = 'good' | 'low_but_usable' | 'not_observable'
+
+/** How well one body region was seen around the event; apart from state and reasons. */
+export interface RegionVisibility {
+  region: 'torso' | 'left_wrist' | 'right_wrist' | 'legs'
+  label: string
+  state: RegionVisibilityState
+  state_label: string
+  /** Region used by the event (reliability.regions_used). */
+  used: boolean
+  reasons: string[]
+}
+
 /** apps/api/tennis_api/schemas.py StrokeEventOut. Times on the proxy timeline. */
 export interface StrokeEvent {
   id: string
@@ -270,6 +283,8 @@ export interface StrokeEvent {
   window_end_s: number
   reasons: string[]
   reason_codes: string[]
+  /** Four regions, fixed order: torso, left wrist, right wrist, legs. */
+  regions: RegionVisibility[]
 }
 
 /** Insufficient evidence to detect strokes, NOT absence of strokes. */

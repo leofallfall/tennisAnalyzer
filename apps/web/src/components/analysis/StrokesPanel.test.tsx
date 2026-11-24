@@ -1,5 +1,11 @@
-import type { Analysis, AnalysisVideo, StrokesView } from '@tpa/contracts'
-import { render, screen } from '@testing-library/react'
+import type {
+  Analysis,
+  AnalysisVideo,
+  RegionVisibility,
+  RegionVisibilityState,
+  StrokesView,
+} from '@tpa/contracts'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -43,6 +49,37 @@ const av = (strokes_url: string | null): AnalysisVideo => ({
   stroke_detection: null,
 })
 
+const LABELS = {
+  good: 'buona',
+  low_but_usable: 'bassa ma usabile',
+  not_observable: 'non osservabile',
+} as const
+
+const regions = (
+  states: [
+    RegionVisibilityState,
+    RegionVisibilityState,
+    RegionVisibilityState,
+    RegionVisibilityState,
+  ],
+  used = [true, true, true, false],
+): RegionVisibility[] =>
+  (
+    [
+      ['torso', 'busto'],
+      ['left_wrist', 'polso sinistro'],
+      ['right_wrist', 'polso destro'],
+      ['legs', 'gambe'],
+    ] as const
+  ).map(([region, label], i) => ({
+    region,
+    label,
+    state: states[i]!,
+    state_label: LABELS[states[i]!],
+    used: used[i]!,
+    reasons: states[i] === 'good' ? [] : ['punti del corpo visti male'],
+  }))
+
 // Shape test data for the component only; not analysis output.
 const view: StrokesView = {
   analysis_id: 'a1',
@@ -65,6 +102,7 @@ const view: StrokesView = {
       window_end_s: 1.1,
       reasons: [],
       reason_codes: [],
+      regions: regions(['good', 'good', 'good', 'good']),
     },
     {
       id: 'e0002',
@@ -77,6 +115,7 @@ const view: StrokesView = {
       window_end_s: 3.2,
       reasons: ['Polsi visti male durante il movimento'],
       reason_codes: ['uncertain_no_mostly_good_peak'],
+      regions: regions(['good', 'low_but_usable', 'not_observable', 'good']),
     },
     {
       id: 'e0003',
@@ -89,6 +128,7 @@ const view: StrokesView = {
       window_end_s: 5,
       reasons: ['Movimento del polso molto più lento'],
       reason_codes: ['reject_low_relative_height'],
+      regions: regions(['good', 'good', 'good', 'good']),
     },
   ],
   not_assessable: [
@@ -144,6 +184,46 @@ describe('StrokesPanel', () => {
 
     await userEvent.click(screen.getByLabelText('Mostra scartati'))
     expect(screen.getByText('Scartato')).toBeInTheDocument()
+  })
+
+  it('shows the four regions per stroke, apart from state and reasons', async () => {
+    mockFetch({ [URL_]: view })
+    render(
+      <StrokesPanel
+        analysis={analysis}
+        av={av(URL_)}
+        frame={0}
+        duration={10}
+        onSeekFrame={() => undefined}
+        onDetected={() => undefined}
+      />,
+    )
+    const strips = await screen.findAllByTestId('regions')
+    expect(strips).toHaveLength(2) // discarded hidden
+    const toCheck = strips[1]!
+    const states = Array.from(toCheck.querySelectorAll('[data-region]')).map((el) => [
+      el.getAttribute('data-region'),
+      el.getAttribute('data-region-state'),
+    ])
+    expect(states).toEqual([
+      ['torso', 'good'],
+      ['left_wrist', 'low_but_usable'],
+      ['right_wrist', 'not_observable'],
+      ['legs', 'good'],
+    ])
+    expect(
+      within(toCheck).getByLabelText('polso destro: non osservabile (punti del corpo visti male)'),
+    ).toBeInTheDocument()
+    expect(within(toCheck).getByLabelText('gambe: buona (non usata dal colpo)')).toBeInTheDocument()
+    // the event reasons are a separate block, not inside the regions strip
+    const reasons = screen.getByTestId('reasons')
+    expect(reasons).toHaveTextContent('Polsi visti male durante il movimento')
+    expect(within(toCheck).queryByText(/Polsi visti male/)).not.toBeInTheDocument()
+    // legend
+    expect(
+      screen.getByText(/Visibilità delle parti del corpo intorno al colpo/),
+    ).toBeInTheDocument()
+    expect(screen.getByText('bassa ma usabile')).toBeInTheDocument()
   })
 
   it('offers detection on an old analysis without strokes', async () => {

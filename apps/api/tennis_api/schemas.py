@@ -270,6 +270,18 @@ class AiAnalysisOut(ApiModel):
     images: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class RegionVisibilityOut(ApiModel):
+    """How well one body region was seen around the event (detector's own judgement).
+    Separate from the event state and its reasons."""
+
+    region: str = Field(description="torso | left_wrist | right_wrist | legs")
+    label: str
+    state: str = Field(description="good | low_but_usable | not_observable")
+    state_label: str
+    used: bool = Field(description="Region used by the event (reliability.regions_used)")
+    reasons: list[str] = Field(description="Why not good, in words")
+
+
 class StrokeEventOut(ApiModel):
     """One detector event as a personal V1 state (ADR-025, ADR-027). No score."""
 
@@ -286,6 +298,9 @@ class StrokeEventOut(ApiModel):
     window_end_s: float
     reasons: list[str] = Field(description="Reasons in words, rule order")
     reason_codes: list[str]
+    regions: list[RegionVisibilityOut] = Field(
+        description="Four regions, fixed order: torso, left wrist, right wrist, legs"
+    )
 
 
 class NotAssessableOut(ApiModel):

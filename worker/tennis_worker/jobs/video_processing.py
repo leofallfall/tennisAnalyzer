@@ -1,4 +1,4 @@
-"""Milestone 1 job: ingestion + quality + pose for every video of an analysis."""
+"""Milestone 1 job: ingestion + quality + pose (+ experimental strokes, V1) per video."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from tennis_api.storage import analysis_video_dir
 from tennis_cv.pipeline import PipelineOptions, run_video_processing
 from tennis_cv.pose.base import PoseEstimator
 from tennis_cv.pose.mediapipe_estimator import MediaPipePoseEstimator
+from tennis_worker.jobs.stroke_detection import detect_strokes_in_dir
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ def run_video_processing_job(
     """
     links = list(analysis.video_links)
     reports: dict[str, object] = {}
+    strokes: dict[str, object] = {}
     options = PipelineOptions(pose_stride=settings.pose_stride)
     for n, link in enumerate(links):
         source = settings.storage_dir / link.video.stored_path
@@ -49,9 +51,12 @@ def run_video_processing_job(
             )
         log.info("Video %s done in %.1fs", link.video_id, time.perf_counter() - started)
         reports[link.video_id] = report.model_dump(mode="json")
+        progress("stroke detection", 0.99)
+        strokes[link.video_id] = detect_strokes_in_dir(out_dir, settings)
     return {
         "kind": "video_processing",
         "videos": reports,
-        "note": "Ingestion, quality and pose estimation only. No stroke detection or "
-        "biomechanical analysis has been performed.",
+        "strokes": strokes,
+        "note": "Ingestion, quality, pose estimation and experimental stroke detection "
+        "(provisional thresholds, not validated). No biomechanical analysis has been performed.",
     }

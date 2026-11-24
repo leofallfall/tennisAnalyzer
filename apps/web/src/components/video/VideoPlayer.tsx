@@ -1,6 +1,6 @@
 import type { PoseFrame, PoseSequence } from '@tpa/contracts'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Pause, Play } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { type Ref, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { formatClock } from '@/lib/format'
@@ -17,6 +17,12 @@ export interface TimelineSegment {
   example?: boolean
 }
 
+/** Imperative control for panels outside the player (e.g. stroke markers). */
+export interface VideoPlayerHandle {
+  /** Pause and show this proxy frame. */
+  seekFrame: (index: number) => void
+}
+
 export interface VideoPlayerProps {
   src: string
   fps: number
@@ -25,6 +31,7 @@ export interface VideoPlayerProps {
   segments?: TimelineSegment[]
   onFrameChange?: (frame: number, pose: PoseFrame | null) => void
   className?: string
+  playerRef?: Ref<VideoPlayerHandle>
 }
 
 const RATES = [0.1, 0.25, 0.5, 1]
@@ -42,6 +49,7 @@ export function VideoPlayer({
   segments = [],
   onFrameChange,
   className,
+  playerRef,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -121,6 +129,8 @@ export function VideoPlayer({
     },
     [fps, totalFrames],
   )
+
+  useImperativeHandle(playerRef, () => ({ seekFrame }), [seekFrame])
 
   /** Relative step based on the element's (already updated) currentTime, not React state,
    * so rapid key presses accumulate correctly while seeks are still pending. */

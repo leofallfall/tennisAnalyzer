@@ -65,3 +65,19 @@ def test_not_assessable_stretch_says_insufficient_evidence() -> None:
     assert s.state is V1State.NOT_ASSESSABLE
     assert "giocatore non rilevato" in s.reason and NOT_ASSESSABLE_NOTE in s.reason
     assert s.reason.startswith("Polso sinistro, polso destro")
+
+
+def test_region_views_follow_the_file_in_fixed_order() -> None:
+    from tennis_cv.strokes.artifact import RegionState
+    from tennis_cv.strokes.states import REGION_STATE_LABEL
+
+    doc = load_strokes(EXAMPLE)
+    events, _ = v1_views(doc)
+    assert set(REGION_STATE_LABEL) == set(RegionState)
+    for e, view in zip(doc.events, events, strict=True):
+        assert [r.region for r in view.regions] == list(RegionName)
+        for r in view.regions:
+            assert r.state is e.regions.get(r.region).state
+            assert r.used == (r.region in e.reliability.regions_used)
+            assert len(r.reasons) == len(e.regions.get(r.region).reasons)
+            assert r.state_label == REGION_STATE_LABEL[r.state]

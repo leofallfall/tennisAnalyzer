@@ -149,11 +149,29 @@ transcoded to H.264 for browser playback.
 Split sessions into segments with constant camera geometry (hard cuts, camera moved,
 player changed side). Required before aggregating metrics across a session.
 
-## 10. Stroke detection and analysis ⏳
+## 10. Stroke detection and analysis (experimental, personal V1 step 3, ADR-028)
 
-Candidate strokes from wrist speed peaks and body rotation in the pose sequence
-(and later racket/ball), classification by hitting side relative to dominant hand,
-per-stroke quality gating, phase segmentation, metric calculation, aggregation.
+After the pose of each video the worker runs the experimental M2.3 detector
+(`tennis_cv.strokes.detector.detect_dir`, parameters unchanged, docs/M2_3_EVENTS.md) on
+`pose.json` + `timemap.json` and writes `strokes.json` (1.1) next to them
+(`worker/tennis_worker/jobs/stroke_detection.py`). A detector failure never fails the
+analysis: the pose results stay, and `results.strokes[<video_id>]` records `status`
+(`completed` / `failed` / `not_available`), event counts per status and the number of
+not-assessable stretches (counts, never rates).
+
+Analyses processed before this step: `POST /api/analyses/{id}/strokes` queues a
+`stroke_detection` job that runs the same detector on the `pose.json` already on disk (no
+new pose estimation; about 4 s for 5 minutes of video). Only `results.strokes` changes.
+
+`GET /api/analyses/{id}/videos/{video_id}/strokes` is the read-only V1 view: states and
+reasons in words from `tennis_cv.strokes.states` (*colpo segnalato* / *da verificare* /
+*scartato* / *non valutabile*), with times on the **proxy timeline** (`frame / fps`) also when
+`strokes.json` uses source times, so the player seeks to the exact frame. Discarded events
+are hidden in the web app unless asked for; not-assessable stretches are labelled as
+insufficient evidence, never as absence of strokes.
+
+Not yet: forehand/backhand classification, per-stroke quality gating beyond the states,
+phase segmentation, metrics, aggregation.
 
 ## 11. Storage layout
 
@@ -162,7 +180,7 @@ storage/
   tpa.sqlite3
   videos/<video_id>/original.<ext>
   analyses/<analysis_id>/videos/<video_id>/
-      proxy.mp4  pose.json  overlay.mp4  report.json  timemap.json
+      proxy.mp4  pose.json  overlay.mp4  report.json  timemap.json  strokes.json
 ```
 
 `report.json` (`ProcessingReport`) also lists `not_performed` analyses explicitly. File

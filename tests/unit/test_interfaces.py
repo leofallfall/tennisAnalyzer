@@ -39,5 +39,7 @@ def test_not_implemented_modules_raise(call: object) -> None:
 
 def test_capabilities_mark_unimplemented_modules() -> None:
     status = {c.module: c.status for c in CAPABILITIES}
-    for module in ("strokes", "racket", "ball", "comparison", "detection"):
+    for module in ("racket", "ball", "comparison", "detection"):
         assert status[module] is ModuleStatus.NOT_IMPLEMENTED
+    # Detection only, provisional states (ADR-028); classification/phases still interfaces.
+    assert status["strokes"] is ModuleStatus.EXPERIMENTAL

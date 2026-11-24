@@ -228,13 +228,88 @@ export interface AnalysisVideo {
   camera_view: ViewAngle
   original_filename: string
   file_url: string
-  artifacts: Partial<Record<'proxy' | 'pose' | 'overlay' | 'report', string>>
+  artifacts: Partial<
+    Record<'proxy' | 'pose' | 'overlay' | 'report' | 'timemap' | 'strokes', string>
+  >
+  /** V1 strokes view; null until strokes.json exists (apps/api strokes_view.py). */
+  strokes_url?: string | null
+  stroke_detection?: StrokeDetectionSummary | null
+}
+
+/** worker/tennis_worker/jobs/stroke_detection.py — counts, never rates. */
+export interface StrokeDetectionSummary {
+  status: 'completed' | 'failed' | 'not_available'
+  algorithm_version?: string
+  experimental?: boolean
+  events?: { accepted: number; uncertain: number; rejected: number }
+  not_assessable_stretches?: number
+  error?: { code: string; message: string; [k: string]: unknown }
+  reason?: string
 }
 
 export interface AnalysisResults {
   kind: string
   videos: Record<string, ProcessingReport>
+  strokes?: Record<string, StrokeDetectionSummary>
   note: string
+}
+
+/** Personal V1 states (engine/tennis_cv/strokes/states.py, ADR-025/027). */
+export type StrokeState = 'flagged' | 'to_check' | 'discarded'
+
+export type RegionVisibilityState = 'good' | 'low_but_usable' | 'not_observable'
+
+/** How well one body region was seen around the event; apart from state and reasons. */
+export interface RegionVisibility {
+  region: 'torso' | 'left_wrist' | 'right_wrist' | 'legs'
+  label: string
+  state: RegionVisibilityState
+  state_label: string
+  /** Region used by the event (reliability.regions_used). */
+  used: boolean
+  reasons: string[]
+}
+
+/** apps/api/tennis_api/schemas.py StrokeEventOut. Times on the proxy timeline. */
+export interface StrokeEvent {
+  id: string
+  state: StrokeState
+  status: 'accepted' | 'uncertain' | 'rejected'
+  label: string
+  /** null when the wrist is undetermined: use the window. */
+  time_s: number | null
+  frame: number | null
+  window_start_s: number
+  window_end_s: number
+  reasons: string[]
+  reason_codes: string[]
+  /** Four regions, fixed order: torso, left wrist, right wrist, legs. */
+  regions: RegionVisibility[]
+}
+
+/** Insufficient evidence to detect strokes, NOT absence of strokes. */
+export interface NotAssessableStretch {
+  state: 'not_assessable'
+  label: string
+  start_s: number
+  end_s: number
+  start_frame: number
+  end_frame: number
+  regions: string[]
+  reason: string
+}
+
+export interface StrokesView {
+  analysis_id: string
+  video_id: string
+  algorithm: string
+  algorithm_version: string
+  experimental: boolean
+  fps: number
+  provisional_params: Record<string, unknown>
+  note: string
+  events: StrokeEvent[]
+  not_assessable: NotAssessableStretch[]
 }
 
 export interface Analysis extends AnalysisStatusInfo {

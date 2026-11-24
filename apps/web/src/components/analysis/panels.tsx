@@ -72,8 +72,8 @@ export function ProcessingStatusCard({
         )}
         {status === 'completed' && (
           <p className="text-sm text-muted-foreground">
-            Video processed. No stroke detection or biomechanical analysis has been performed —
-            those modules are not implemented yet.
+            Video processed. Strokes come from an experimental detector (see the strokes panel); no
+            biomechanical analysis has been performed — that module is not implemented yet.
           </p>
         )}
         {(status === 'created' || status === 'failed') && (

@@ -25,8 +25,10 @@ from tennis_api.schemas import (
     AnalysisSummaryOut,
     AnalysisVideoOut,
     ErrorInfo,
+    StrokesOut,
 )
 from tennis_api.storage import ARTIFACT_NAMES, analysis_video_dir
+from tennis_api.strokes_view import strokes_view
 
 router = APIRouter(prefix="/api/analyses", tags=["analyses"])
 
@@ -67,6 +69,11 @@ def _to_out(a: Analysis, settings: Settings) -> AnalysisOut:
         }
         if report:
             artifacts["report"] = f"/api/analyses/{a.id}/videos/{link.video_id}/artifacts/report"
+        out_dir = analysis_video_dir(settings.storage_dir, a.id, link.video_id)
+        has_strokes = (out_dir / ARTIFACT_NAMES["strokes"]).is_file()
+        if has_strokes:
+            artifacts["strokes"] = f"/api/analyses/{a.id}/videos/{link.video_id}/artifacts/strokes"
+        detection = (results.get("strokes") or {}).get(link.video_id)
         videos.append(
             AnalysisVideoOut(
                 video_id=link.video_id,
@@ -75,6 +82,10 @@ def _to_out(a: Analysis, settings: Settings) -> AnalysisOut:
                 original_filename=link.video.original_filename,
                 file_url=f"/api/videos/{link.video_id}/file",
                 artifacts=artifacts,
+                strokes_url=(
+                    f"/api/analyses/{a.id}/videos/{link.video_id}/strokes" if has_strokes else None
+                ),
+                stroke_detection=redact(detection, settings) if detection else None,
             )
         )
     return AnalysisOut(
@@ -201,3 +212,47 @@ def get_artifact(
         return JSONResponse(redact(json.loads(path.read_text()), settings))
     media = "application/json" if filename.endswith(".json") else "video/mp4"
     return FileResponse(path, media_type=media)
+
+
+@router.post("/{analysis_id}/strokes", response_model=AnalysisStatusOut, status_code=202)
+def detect_strokes(analysis_id: str, db: DbDep, settings: SettingsDep) -> AnalysisStatusOut:
+    """Queue the experimental stroke detector on the pose already computed (no new pose
+    estimation): for analyses processed before V1, or to refresh ``strokes.json``."""
+    a = _get(db, analysis_id)
+    if a.status != AnalysisStatus.COMPLETED.value:
+        raise ApiError(
+            409,
+            "analysis_not_completed",
+            "Strokes are detected on a completed analysis",
+            {"status": a.status},
+        )
+    has_pose = any(
+        (
+            analysis_video_dir(settings.storage_dir, a.id, link.video_id) / ARTIFACT_NAMES["pose"]
+        ).is_file()
+        for link in a.video_links
+    )
+    if not has_pose:
+        raise ApiError(409, "pose_not_available", "No pose results on disk for this analysis")
+    a.status = AnalysisStatus.QUEUED.value
+    a.stage = "queued (stroke detection)"
+    a.progress = 0.0
+    a.error_code = a.error_message = None
+    a.error_details = None
+    db.add(ProcessingJob(analysis_id=a.id, kind="stroke_detection"))
+    db.commit()
+    return AnalysisStatusOut(**_status_fields(a, settings))
+
+
+@router.get("/{analysis_id}/videos/{video_id}/strokes", response_model=StrokesOut)
+def get_strokes(analysis_id: str, video_id: str, db: DbDep, settings: SettingsDep) -> StrokesOut:
+    """Personal V1 view of strokes.json: states, reasons in words, proxy-timeline times."""
+    a = _get(db, analysis_id)
+    if all(link.video_id != video_id for link in a.video_links):
+        raise not_found("video", video_id)
+    path = (
+        analysis_video_dir(settings.storage_dir, analysis_id, video_id) / ARTIFACT_NAMES["strokes"]
+    )
+    if not path.is_file():
+        raise ApiError(404, "strokes_not_available", "No strokes detected for this video yet")
+    return strokes_view(path, analysis_id, video_id)

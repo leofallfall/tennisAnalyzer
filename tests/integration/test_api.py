@@ -18,7 +18,7 @@ def test_health_and_system_info(client: TestClient) -> None:
     info = client.get("/api/system/info").json()
     assert {t["name"] for t in info["tools"]} >= {"ffmpeg", "ffprobe", "mediapipe"}
     caps = {c["module"]: c["status"] for c in info["capabilities"]}
-    assert caps["strokes"] == "not_implemented"
+    assert caps["strokes"] == "experimental"  # detection only (ADR-028)
 
 
 def test_upload_extracts_metadata(client: TestClient, basic_video: Path) -> None:
@@ -98,7 +98,7 @@ def test_analysis_lifecycle(client: TestClient, fake_worker: Worker, basic_video
     assert report["quality"]["observability"] == "not_observable"
     assert "stroke_detection" in report["not_performed"]
     artifacts = analysis["videos"][0]["artifacts"]
-    assert set(artifacts) == {"proxy", "pose", "overlay", "report", "timemap"}  # timemap: M1.10
+    assert set(artifacts) == {"proxy", "pose", "overlay", "report", "timemap", "strokes"}
     overlay = client.get(artifacts["overlay"])
     assert overlay.status_code == 200 and overlay.headers["content-type"] == "video/mp4"
     pose = client.get(artifacts["pose"]).json()

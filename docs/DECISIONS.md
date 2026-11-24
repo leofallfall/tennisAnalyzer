@@ -616,3 +616,42 @@ reason texts in the web app (the CLI and later the API need them too).
 **Consequences:** the reference depends on the clip's composition (many pauses lower the
 90th percentile); short clips get no height judgement. Values are fitted on the data they are
 reported on: an upper bound, one player only.
+
+### ADR-028 Personal V1 steps 3-4: strokes in the app and on the timeline (2026-11-24)
+
+**Context:** ADR-025 steps 3 and 4: the detector (ADR-026, states ADR-027) ran only from the
+command line. Goal: upload a video, play it, see the possible strokes on the timeline with
+their state and reason, and jump to them. No correction, no forehand/backhand yet.
+**Decision:**
+- The worker runs `detect_dir` after the pose of each video and writes `strokes.json` next
+  to `pose.json`. Detector and parameters unchanged. A detector failure is recorded in
+  `results.strokes[<video_id>]` and does not fail the analysis (the pose stays usable).
+- Older analyses: a `stroke_detection` job kind, queued by `POST /api/analyses/{id}/strokes`
+  on a completed analysis, reruns only the detector on the `pose.json` on disk. It reuses
+  the existing job queue and status polling; the analysis is briefly *queued/running* again.
+- `GET .../videos/{video_id}/strokes` returns the V1 view (`tennis_cv.strokes.states` texts)
+  with times on the proxy timeline (`frame / fps`), the timeline the player shows; the raw
+  file stays available as the `strokes` artifact.
+- Web: a strokes panel under the player: track with markers (*colpo segnalato* filled, *da
+  verificare* hollow, *non valutabile* hatched band), legend saying "evidenze insufficienti,
+  non assenza di colpi", time-ordered list with reasons, click = pause and seek to the
+  reference frame (window start when the wrist is undetermined). *Scartati* hidden by
+  default, shown with a toggle. Counts only, no percentages. Stroke texts in Italian, as in
+  `states.py`; the rest of the UI stays English for now.
+- Region visibility per stroke: the four regions already recorded in `strokes.json`
+  (`regions`, `reliability.regions_used`) are exposed by `states.region_views` and the API
+  (`regions` of each event, fixed order busto, polso sinistro, polso destro, gambe) and
+  shown in each stroke row as a separate "Visibilità" line: filled green dot = *buona*,
+  half amber = *bassa ma usabile*, dashed empty = *non osservabile* (state words also in
+  text and tooltip, with the reasons); regions the event did not use in italics. A legend
+  says it is separate from the stroke state; the state and its reasons stay in their own
+  block.
+- `capabilities` strokes: experimental.
+**Alternatives:** detecting inside the GET request (about 4 s per 5 minutes of video: too
+slow for a request, against "API must not run long CV work"); a backfill script only (the
+developer would need a terminal for each old analysis); re-running the whole analysis
+(recomputes pose for nothing); seeking on `ref_t_s` (source time when a time map exists, not
+the player's timeline).
+**Consequences:** `report.json` (engine pipeline report) still lists `stroke_detection`
+under `not_performed`, because the pipeline itself does not run it; the AI Evidence Pack
+does not use strokes yet.

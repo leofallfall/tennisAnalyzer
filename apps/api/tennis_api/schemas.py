@@ -125,6 +125,13 @@ class AnalysisVideoOut(ApiModel):
     original_filename: str
     file_url: str
     artifacts: dict[str, str] = Field(default_factory=dict)
+    strokes_url: str | None = Field(
+        default=None, description="V1 strokes view; set only when strokes.json exists"
+    )
+    stroke_detection: dict[str, Any] | None = Field(
+        default=None,
+        description="Summary of the last stroke detection run (status, counts, error)",
+    )
 
 
 class ErrorInfo(ApiModel):
@@ -156,8 +163,9 @@ class AnalysisOut(AnalysisStatusOut):
     videos: list[AnalysisVideoOut]
     results: dict[str, Any] | None = Field(
         default=None,
-        description="Per-video processing reports keyed by video id. Contains ingestion, "
-        "quality and pose results only; no stroke/biomechanical analysis yet.",
+        description="Per-video processing reports keyed by video id (ingestion, quality, "
+        "pose) and, under 'strokes', the experimental stroke detection summary per video. "
+        "No biomechanical analysis yet.",
     )
 
 
@@ -260,3 +268,64 @@ class AiAnalysisOut(ApiModel):
     )
     handoff: AiHandoffOut | None = None
     images: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class RegionVisibilityOut(ApiModel):
+    """How well one body region was seen around the event (detector's own judgement).
+    Separate from the event state and its reasons."""
+
+    region: str = Field(description="torso | left_wrist | right_wrist | legs")
+    label: str
+    state: str = Field(description="good | low_but_usable | not_observable")
+    state_label: str
+    used: bool = Field(description="Region used by the event (reliability.regions_used)")
+    reasons: list[str] = Field(description="Why not good, in words")
+
+
+class StrokeEventOut(ApiModel):
+    """One detector event as a personal V1 state (ADR-025, ADR-027). No score."""
+
+    id: str
+    state: str = Field(description="flagged | to_check | discarded")
+    status: str = Field(description="Detector status: accepted | uncertain | rejected")
+    label: str = Field(description="State in words (Italian)")
+    time_s: float | None = Field(
+        description="Reference time on the proxy timeline (frame / fps); null when the "
+        "wrist is undetermined (use the window)"
+    )
+    frame: int | None
+    window_start_s: float
+    window_end_s: float
+    reasons: list[str] = Field(description="Reasons in words, rule order")
+    reason_codes: list[str]
+    regions: list[RegionVisibilityOut] = Field(
+        description="Four regions, fixed order: torso, left wrist, right wrist, legs"
+    )
+
+
+class NotAssessableOut(ApiModel):
+    """Insufficient evidence to detect strokes here, NOT absence of strokes."""
+
+    state: str = "not_assessable"
+    label: str
+    start_s: float = Field(description="Proxy timeline (frame / fps)")
+    end_s: float
+    start_frame: int
+    end_frame: int
+    regions: list[str]
+    reason: str
+
+
+class StrokesOut(ApiModel):
+    analysis_id: str
+    video_id: str
+    algorithm: str
+    algorithm_version: str
+    experimental: bool
+    fps: float
+    provisional_params: dict[str, Any] = Field(
+        description="Provisional values chosen on Development A/B, not validated"
+    )
+    note: str
+    events: list[StrokeEventOut]
+    not_assessable: list[NotAssessableOut]

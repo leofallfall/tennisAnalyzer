@@ -39,8 +39,9 @@ CAPABILITIES: list[Capability] = [
     ),
     Capability(
         module="strokes",
-        status=ModuleStatus.NOT_IMPLEMENTED,
-        description="Stroke detection, forehand/backhand classification, phase segmentation",
+        status=ModuleStatus.EXPERIMENTAL,
+        description="Candidate stroke events from wrist speed peaks with provisional states "
+        "(not validated); no forehand/backhand classification or phase segmentation",
     ),
     Capability(
         module="racket",

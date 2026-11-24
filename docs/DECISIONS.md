@@ -655,3 +655,90 @@ the player's timeline).
 **Consequences:** `report.json` (engine pipeline report) still lists `stroke_detection`
 under `not_performed`, because the pipeline itself does not run it; the AI Evidence Pack
 does not use strokes yet.
+
+### ADR-029 Personal V1 review 1: duplicates, skeleton on something else, out of frame (2026-11-24)
+
+**Context:** first hand review of the V1 by the developer (2026-11-24, sheet with a verdict
+for each of the 62 events shown in the app) on `IMG_5098 (1).MP4`. That file turned out to be
+the first 161.5 s of img5098_full (same frames, offset 0, re-encoded): proxy frames 0-4499 are
+Development B, 4500-4845 (3 shown events) are Control. Findings: no missed stroke; 19 of 23
+*colpo segnalato* and 7 of 39 *da verificare* were real strokes. Three recurring problems:
+(1) 2-3 events within 1 s for one stroke (12 extra events); (2) when the player leaves the
+frame the skeleton jumps to the canopy or to the opponent and a stroke is flagged (torso
+10-15 px instead of about 100; rel_to_clip 4.3 and 1.7); (3) events while the player is out
+of frame shown as *da verificare*. The developer chose (decision card): out of frame →
+*non valutabile*, not *scartato*.
+**Decision** (detector `0.3.0-v1r2`; schema 1.1, contracts and UI unchanged):
+- **Duplicates:** among non-rejected events closer than `grouping.min_event_gap_s` = **1.0 s**
+  (app times: reference time, else window start) only the strongest is kept: an event whose
+  height peak is *descending* (smoothed wrist velocity more than 45° below the horizontal,
+  `vy > |vx|`, image y downward) never beats one that is not; then accepted before
+  uncertain, determined wrist before undetermined, then the higher rel_to_clip of the
+  height peak. The others become `rejected` with `reject_near_stronger_event` ("Doppione: a
+  meno di 1 secondo c'è un movimento più chiaro, tenuto come colpo"); the trace names the
+  stronger event. Never merged: one event's peaks stay chained by G (invariant 3).
+- **Tracking jump:** per sample, torso length (mid-shoulders to mid-hips, any visibility)
+  below `tracking.min_torso_ratio` = **0.4** times the clip median of GOOD torso lengths. A
+  peak with that in most samples of its quality window is discarded (`peak_tracking_jump`).
+- **Out of frame:** per sample, at least `tracking.out_of_frame_min_keypoints` = **9** of the
+  33 keypoints outside `[0.01, 0.99]` (MediaPipe extrapolates what it cannot see). A peak with
+  that in most of its quality window is discarded (`peak_out_of_frame`).
+- Both apply only to peaks that pass the prominence rule. Their samples, plus ±0.15 s around
+  every peak discarded for them, are added to `coverage` with regions busto + both wrists and
+  reason `out_of_frame`: the app shows *non valutabile* ("fuori inquadratura"), never "no
+  stroke". The clip reference height still counts those peaks, so the ADR-027 height
+  thresholds keep their meaning (removing them lowered the reference and turned 8 discarded
+  events into *da verificare*).
+- All three values are provisional starting values, like ADR-026/027.
+**Result** (descriptive, radius 0.3 s; the developer's sheet compared by hand):
+- His video: *colpo segnalato* 23 → 19 (18 real; one of them kept 0.33 s before the stroke
+  he marked), *da verificare* 39 → 19 (7 real, 3 out of frame without verdict, 9 false),
+  discarded 40 → 57 (19 duplicates), not-assessable stretches 42 → 41. Canopy and opponent
+  events gone. One real stroke he marked "totally out of frame" (2:28) is now inside a
+  *non valutabile* stretch, as decided; no real stroke became *scartato* except as the
+  weaker of a duplicate pair.
+- Development A: 24/29 → 25/29 found (17 flagged, 8 to check), 4 missed, ambiguous 1 → 0.
+- Development B (0-4499): 20/24 → 15/24 found (14 flagged, 1 to check), 9 missed. Of the 5
+  lost: 4 are strokes labelled with impact visibility *none* (out of frame), now *non
+  valutabile* by design; 2 are backhands (206, 1184) where the duplicate rule kept the
+  neighbour event (0.37 s before; 0.83 s after, a follow-through) instead; 1 (1088) was
+  gained from ambiguous.
+- **Descending tie-break** (added before merge at the developer's request: the rule kept a
+  neighbour instead of the real stroke at 206 and 1184). In the 29 duplicate groups of
+  Development A/B with a labelled stroke within 0.3 s, the event kept is the labelled one in
+  26 without it and **28 with it**. Why it works: groundstrokes are low-to-high, so at the
+  fastest point of the real swing the wrist rises or moves level (labelled events: `vy` at
+  most +0.26 torso lengths per 4 frames, and always smaller than `|vx|`), while a peak with the
+  wrist going mostly down is a follow-through or a racket drop (13 of the 38 unlabelled
+  events in those groups; these counts use the raw pose over ±2 frames, the rule uses the
+  detector's smoothed velocity). Effect: 1184 found again at +3 frames (*da verificare*; the
+  follow-through at 1209 is now the duplicate); Development A 1540 kept at +6 frames instead
+  of −7 (now *da verificare* instead of *segnalato*); no labelled group got worse. His video:
+  the feed at 2:22 is kept at 4285 (Development B label 4282) instead of 4268, the false event
+  at 2:23.57 becomes a duplicate; *colpo segnalato* 19 → 18, *da verificare* 19, discarded
+  57 → 58 (20 duplicates). Counts at radius 0.3 s with it: Development A 25/29 (16 flagged,
+  9 to check), Development B 16/24 (14 flagged, 2 to check), 8 missed.
+- **Not solved: 206.** Two left-wrist peaks 11 frames apart (192 and 203), both internal,
+  all samples GOOD, speed 7.4 vs 6.9 torso lengths/s, prominence 3.5 vs 3.2, both moving left
+  and slightly up; the pose loses the player at 212 and the label (visibility *partial*) has
+  an estimated frame. No measured quantity separates them; any rule for it (later wins,
+  lower first, …) breaks other groups (later wins: 17/29). It stays a known case:
+  the stroke is shown once, 0.37 s early, and the event at 203 is among the *scartati*.
+- Control frames: the 3 Control events of the developer's sheet (2:37.8, 2:40.2, 2:40.7) were
+  in the tables looked at when choosing the values; Control as a whole was **not** rerun
+  (ADR-027: run once). It stays regression data.
+**Alternatives:** merging close events into one (breaks the G chain rule of the 1.1 schema);
+keeping the earliest or the fastest of a close pair (worse on Development A/B: earliest
+finds 13/29 instead of 25/29 in Development A, fastest one fewer in both A and B); out of frame → *scartato* (loses the
+real strokes at the edge of the frame, 5 in his sheet) or *da verificare* with a reason (does
+not reduce the list); detecting the jump from rel_to_clip > 1.5 (catches the effect, not the
+cause); recomputing the reference height without the discarded peaks (changes the calibrated
+height thresholds).
+**Consequences:** 1 of the 29 labelled duplicate groups (206) still keeps a neighbour of the
+real stroke, 0.37 s early (the weaker event stays visible among the *scartati*). The
+descending tie-break assumes low-to-high swings: overheads (smash, serve follow-through)
+are not in the labelled data and could lose to a neighbour. Out-of-frame detection misses strokes where the body is inside the image
+but the swing is not (7 of his "fuori inquadratura" events stay *da verificare*, 4 of
+them real strokes). Two
+strokes closer than 1 s would be counted once: none in the labelled data (closest pair
+1.17 s). Values chosen on one session plus Development A: an upper bound.

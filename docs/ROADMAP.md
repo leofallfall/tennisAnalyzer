@@ -111,6 +111,10 @@ with the developer (video-specific, recurring algorithm limit, personal improvem
 problem); a rule changes only for recurring problems, with a before/after report on all
 labelled and reviewed videos.
 
+**V1 review 1 (ADR-029, 2026-11-24):** first hand review of the app's strokes (first 161 s of
+img5098_full). Duplicates within 1 s rejected, skeleton-on-something-else and out-of-frame
+peaks discarded and shown as *non valutabile*; before/after on Development A/B in ADR-029.
+
 ### M3 — Session Analysis (was M4; ADR-020)
 The product's entry point: recurring issues of a session for forehand, backhand and both,
 with linked evidence strokes and personal reference executions. Steps (each after approval):

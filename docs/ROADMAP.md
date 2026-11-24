@@ -98,7 +98,7 @@ them.
 | --- | --- | --- |
 | 0 | I1 closure (PR #16): Control recorded in the docs | nothing visible |
 | 1 | I2: peaks grouped into possible strokes, minimum prominence 2.0 applied as an **initial provisional parameter** (not a validated threshold; may change after real use and collected cases), `strokes.json` 1.1 with `coverage` | strokes of any video from the command line — **implemented (ADR-026), in review** |
-| 2 | Provisional rules for the three states (part of I3), chosen on Development A/B; regression report on Development A/B and Control | every possible stroke gets a state and a reason — **rules implemented (ADR-027), in review; Control regression report after the values are confirmed** |
+| 2 | Provisional rules for the three states (part of I3), chosen on Development A/B; regression report on Development A/B and Control | every possible stroke gets a state and a reason — **rules implemented, values 0.45 / 0.70 confirmed, Control regression report done once (ADR-027); in review** |
 | 3 | Worker step + API + contracts; `capabilities` strokes = experimental | every analysis produces strokes; older analyses re-processed from `pose.json` |
 | 4 | Strokes view on the analysis page: timeline markers, *stroke flagged* / *to check* / *not assessable* (events, and grey stretches labelled as insufficient evidence to detect strokes, never as "no strokes"), reason in words, region visibility shown apart, jump to the stroke | the first usable result |
 | 5 | Review: confirm, delete with reason, move, set type (forehand / backhand / other), add a missed stroke, mark reviewed stretches; corrections stored apart and exportable as labels; case log | results can be corrected and become cases |

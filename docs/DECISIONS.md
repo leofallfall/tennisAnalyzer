@@ -601,6 +601,14 @@ developer on a sensitivity table; observability rules from I2 unchanged.
   its own frames only (as Development B from 0-4499), clip reference height included.
 - **Values confirmed by the developer on 2026-11-24:** t_reject 0.45, t_accept 0.70, initial
   provisional parameters, not validated thresholds.
+- **Control regression report (run once on 2026-11-24, code 33a4b51; regression data, same
+  session as Development B, not validation):** 16/26 target strokes found at radius 0.3 s
+  (9 flagged, 7 to check), 10 missed, 0 ambiguous; **0 missed because of the height
+  thresholds** (no rejected event within 0.3 s of a missed stroke). Misses: no pose 3, peak
+  discarded 2, event outside the radius 4, no peak 1; 6 of 10 have impact visibility "none",
+  8 are forehands. *Colpo segnalato* 17 = 9 target + 4 other strokes + 4 false; *da
+  verificare* 33 (24 false); 49 discarded. Development B for comparison: 20/24 found, 3
+  missed, 6 false flagged. Nothing was changed after the run.
 **Alternatives:** absolute speed thresholds (amplitude varies up to 2x with tracking);
 rel_to_clip from the median (less stable across clips) or from prominence (least stable);
 one threshold only (no "to check" band; every borderline stroke would be lost or flagged);

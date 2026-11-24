@@ -17,6 +17,7 @@ ARTIFACT_NAMES = {
     "pose": "pose.json",
     "report": "report.json",
     "timemap": "timemap.json",
+    "strokes": "strokes.json",
 }
 CHUNK = 1024 * 1024
 

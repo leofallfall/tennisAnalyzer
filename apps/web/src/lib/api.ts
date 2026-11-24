@@ -7,6 +7,7 @@ import type {
   ApiErrorBody,
   PoseSequence,
   SingleStrokeAiRequest,
+  StrokesView,
   SystemInfo,
   Video,
 } from '@tpa/contracts'
@@ -60,6 +61,9 @@ export const api = {
   startAnalysis: (id: string) =>
     request<AnalysisStatusInfo>(`/api/analyses/${id}/start`, { method: 'POST' }),
   getPose: (url: string) => request<PoseSequence>(url),
+  getStrokes: (url: string) => request<StrokesView>(url),
+  detectStrokes: (id: string) =>
+    request<AnalysisStatusInfo>(`/api/analyses/${id}/strokes`, { method: 'POST' }),
   listAiAnalyses: (analysisId: string) => request<AiAnalysis[]>(`/api/analyses/${analysisId}/ai`),
   prepareSessionAi: (analysisId: string) =>
     request<AiAnalysis>(`/api/analyses/${analysisId}/ai/session`, { method: 'POST' }),

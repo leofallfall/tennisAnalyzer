@@ -1,9 +1,10 @@
 import type { Analysis, PoseFrame, PoseSequence, StrokeFilter } from '@tpa/contracts'
 import { ArrowLeft, ExternalLink } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
 import { AiAnalysisPanel } from '@/components/analysis/AiAnalysisPanel'
+import { StrokesPanel } from '@/components/analysis/StrokesPanel'
 import {
   JointTable,
   PoseSummaryCard,
@@ -23,7 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Segmented } from '@/components/ui/segmented'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
-import { VideoPlayer } from '@/components/video/VideoPlayer'
+import { VideoPlayer, type VideoPlayerHandle } from '@/components/video/VideoPlayer'
 import { api } from '@/lib/api'
 import {
   EXAMPLE_ISSUES,
@@ -94,7 +95,13 @@ export function AnalysisDetailPage() {
         }
       />
       {startError && <ErrorAlert title="Could not start" message={startError} />}
-      <AnalysisBody key={analysis.id} analysis={analysis} onStart={start} starting={starting} />
+      <AnalysisBody
+        key={analysis.id}
+        analysis={analysis}
+        onStart={start}
+        starting={starting}
+        onReload={reload}
+      />
     </>
   )
 }
@@ -103,12 +110,15 @@ function AnalysisBody({
   analysis,
   onStart,
   starting,
+  onReload,
 }: {
   analysis: Analysis
   onStart: () => void
   starting: boolean
+  onReload: () => void
 }) {
   const [videoIdx, setVideoIdx] = useState(0)
+  const playerRef = useRef<VideoPlayerHandle>(null)
   const av = analysis.videos[videoIdx] ?? analysis.videos[0]!
   const report = analysis.results?.videos[av.video_id] ?? null
   const { data: video } = useAsync(() => api.getVideo(av.video_id), [av.video_id])
@@ -149,44 +159,55 @@ function AnalysisBody({
       )}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <Card>
-          <CardHeader className="flex-row items-center justify-between">
-            <div>
-              <CardTitle>Video</CardTitle>
-              <CardDescription>
-                {av.artifacts.proxy
-                  ? 'Normalised proxy (rotation applied, constant frame rate)'
-                  : 'Original upload'}
-                {!av.artifacts.proxy &&
-                  ' · if it does not play, your browser lacks the codec; processing creates a playable proxy'}
-              </CardDescription>
-            </div>
-            {av.artifacts.overlay && (
-              <Button asChild variant="outline" size="sm">
-                <a href={av.artifacts.overlay} target="_blank" rel="noreferrer">
-                  Overlay video <ExternalLink />
-                </a>
-              </Button>
-            )}
-          </CardHeader>
-          <CardContent>
-            <VideoPlayer
-              key={src}
-              src={src}
-              fps={fps}
-              frameCount={meta?.frame_count}
-              pose={pose.data}
-              segments={analysis.mode === 'single_stroke' ? EXAMPLE_PHASES(duration) : []}
-              onFrameChange={onFrameChange}
-            />
-            {analysis.mode === 'single_stroke' && (
-              <p className="mt-2 text-[11px] text-muted-foreground">
-                Phase bar shows an <strong>example</strong> segmentation layout. Phase segmentation
-                is not implemented yet.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+        <div className="flex min-w-0 flex-col gap-4">
+          <Card>
+            <CardHeader className="flex-row items-center justify-between">
+              <div>
+                <CardTitle>Video</CardTitle>
+                <CardDescription>
+                  {av.artifacts.proxy
+                    ? 'Normalised proxy (rotation applied, constant frame rate)'
+                    : 'Original upload'}
+                  {!av.artifacts.proxy &&
+                    ' · if it does not play, your browser lacks the codec; processing creates a playable proxy'}
+                </CardDescription>
+              </div>
+              {av.artifacts.overlay && (
+                <Button asChild variant="outline" size="sm">
+                  <a href={av.artifacts.overlay} target="_blank" rel="noreferrer">
+                    Overlay video <ExternalLink />
+                  </a>
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              <VideoPlayer
+                key={src}
+                src={src}
+                fps={fps}
+                frameCount={meta?.frame_count}
+                pose={pose.data}
+                segments={analysis.mode === 'single_stroke' ? EXAMPLE_PHASES(duration) : []}
+                onFrameChange={onFrameChange}
+                playerRef={playerRef}
+              />
+              {analysis.mode === 'single_stroke' && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Phase bar shows an <strong>example</strong> segmentation layout. Phase
+                  segmentation is not implemented yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+          <StrokesPanel
+            analysis={analysis}
+            av={av}
+            frame={frameInfo.frame}
+            duration={duration}
+            onSeekFrame={(f) => playerRef.current?.seekFrame(f)}
+            onDetected={onReload}
+          />
+        </div>
 
         <div className="flex flex-col gap-4">
           <ProcessingStatusCard analysis={analysis} onStart={onStart} starting={starting} />

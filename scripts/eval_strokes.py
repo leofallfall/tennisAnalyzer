@@ -13,9 +13,10 @@ Usage:
         [--results-dir DIR] [--tolerance-s 0.25] [--targets forehand,backhand]
         [--out REPORT.md] [--json DATA.json]
     uv run python scripts/eval_strokes.py detect POSE_DIR [--out STROKES.json] [--g-s 0.3]
-        [--last-proxy-frame N]
+        [--last-proxy-frame N] [--first-proxy-frame N]
     uv run python scripts/eval_strokes.py detect MANIFEST --results-dir DIR [--g-s 0.3]
-        [--last-proxy-frame N]
+        [--last-proxy-frame N] [--first-proxy-frame N]
+    uv run python scripts/eval_strokes.py states STROKES [--show-discarded]
     uv run python scripts/eval_strokes.py validate-strokes STROKES [--inputs DIR | --no-inputs]
     uv run python scripts/eval_strokes.py evaluate MANIFEST LABELS --out STROKES_EVAL.json
         [--annotated ANNOTATED.csv] [--results-dir DIR] [--radii 0.1,0.2,0.3,0.5]
@@ -30,7 +31,12 @@ POSE_DIR (pose.json + timemap.json when present) and writes POSE_DIR/strokes.jso
 ``--g-s`` overrides the grouping gap G (exploration only; it is recorded in the file).
 ``--last-proxy-frame`` cuts the inputs at that frame before any computation, as if the
 video ended there (Development B stops at 4499: no frame of the Control part of
-img5098_full is used); frames, times and hashes stay those of the original files.
+img5098_full is used); ``--first-proxy-frame`` cuts the start the same way (Control:
+4500); frames, times and hashes stay those of the original files.
+
+``states`` lists the Personal V1 view of a strokes.json: every possible stroke as
+*colpo segnalato* / *da verificare* (discarded ones only with --show-discarded) and every
+*non valutabile* stretch, each with its reason in words, in time order.
 
 ``validate-strokes`` checks a strokes.json 1.x file: version, schema, the eight invariants
 and (unless --no-inputs) the sha256 of pose.json / timemap.json in DIR (default: the
@@ -115,6 +121,7 @@ from tennis_cv.evaluation.visibility import (
 )
 from tennis_cv.strokes.artifact import check_inputs, dump_strokes, load_strokes
 from tennis_cv.strokes.detector import DetectorParams, detect_dir
+from tennis_cv.strokes.states import STATE_LABEL, V1State, v1_views
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DIR = ROOT / "tests" / "fixtures" / "real"
@@ -367,8 +374,10 @@ def cmd_compare(args: argparse.Namespace) -> int:
     return 0
 
 
-def _detect_one(pose_dir: Path, out: Path, params: DetectorParams, last: int | None) -> None:
-    doc = detect_dir(pose_dir, params, last_proxy_frame=last)
+def _detect_one(
+    pose_dir: Path, out: Path, params: DetectorParams, last: int | None, first: int | None
+) -> None:
+    doc = detect_dir(pose_dir, params, last_proxy_frame=last, first_proxy_frame=first)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(dump_strokes(doc), encoding="utf-8")
     statuses: dict[str, int] = {}
@@ -386,7 +395,11 @@ def cmd_detect(args: argparse.Namespace) -> int:
     params = DetectorParams() if args.g_s is None else DetectorParams(g_s=args.g_s)
     if args.target.is_dir():
         _detect_one(
-            args.target, args.out or args.target / STROKES_FILE, params, args.last_proxy_frame
+            args.target,
+            args.out or args.target / STROKES_FILE,
+            params,
+            args.last_proxy_frame,
+            args.first_proxy_frame,
         )
         return 0
     if args.results_dir is None:
@@ -401,7 +414,42 @@ def cmd_detect(args: argparse.Namespace) -> int:
             args.results_dir / f"{clip.clip_id}.strokes.json",
             params,
             args.last_proxy_frame,
+            args.first_proxy_frame,
         )
+    return 0
+
+
+def _clock(t: float) -> str:
+    m, s = divmod(t, 60.0)
+    return f"{int(m)}:{s:05.2f}"
+
+
+def cmd_states(args: argparse.Namespace) -> int:
+    events, stretches = v1_views(load_strokes(args.strokes))
+    rows: list[tuple[float, str]] = []
+    counts = dict.fromkeys(V1State, 0)
+    for e in events:
+        counts[e.state] += 1
+        if e.state is V1State.DISCARDED and not args.show_discarded:
+            continue
+        t = e.t_s if e.t_s is not None else e.window_t_s[0]
+        when = (
+            _clock(t)
+            if e.t_s is not None
+            else f"{_clock(e.window_t_s[0])}-{_clock(e.window_t_s[1])}"
+        )
+        why = "; ".join(e.reasons) if e.reasons else "-"
+        rows.append((t, f"{when:>17}  {STATE_LABEL[e.state]:<16} {e.event_id}  {why}"))
+    for s in stretches:
+        counts[s.state] += 1
+        when = f"{_clock(s.start_t_s)}-{_clock(s.end_t_s)}"
+        rows.append((s.start_t_s, f"{when:>17}  {STATE_LABEL[s.state]:<16} {s.reason}"))
+    for _, line in sorted(rows, key=lambda r: r[0]):
+        print(line)
+    print(
+        "; ".join(f"{STATE_LABEL[k]}: {v}" for k, v in counts.items())
+        + ("" if args.show_discarded else " (scartati nascosti: --show-discarded)")
+    )
     return 0
 
 
@@ -588,7 +636,18 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="use no frame after this one (data splits, e.g. Development B: 4499)",
     )
+    s.add_argument(
+        "--first-proxy-frame",
+        type=int,
+        default=None,
+        help="use no frame before this one (data splits, e.g. Control: 4500)",
+    )
     s.set_defaults(func=cmd_detect)
+
+    s = sub.add_parser("states", help="V1 view: states and reasons in words")
+    s.add_argument("strokes", type=Path)
+    s.add_argument("--show-discarded", action="store_true", help="also list discarded events")
+    s.set_defaults(func=cmd_states)
 
     s = sub.add_parser("validate-strokes", help="check a strokes.json 1.x file")
     s.add_argument("strokes", type=Path)

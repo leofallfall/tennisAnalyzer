@@ -34,7 +34,10 @@ from tennis_cv.strokes.artifact import (
 )
 from tennis_cv.strokes.detector import (
     R_BELOW_MIN,
+    R_HEIGHT_REJECT,
+    R_HEIGHT_UNCERTAIN,
     R_MERGE,
+    R_NO_CLIP_REF,
     R_PROXY,
     R_REP_ONLY_EDGE,
     R_UNDETERMINED,
@@ -112,7 +115,12 @@ def _poses(
     )  # fmt: skip
 
 
-def _run(poses: PoseSequence, params: DetectorParams | None = None) -> StrokesFile:
+ONE_PEAK_REF = DetectorParams(min_kept_peaks=1)
+"""Short synthetic clips have few peaks: a reference height from one peak keeps the event
+tests about grouping and regions independent of the height rules (tested apart below)."""
+
+
+def _run(poses: PoseSequence, params: DetectorParams | None = ONE_PEAK_REF) -> StrokesFile:
     doc = detect(poses, pose_file="pose.json", pose_sha256="0" * 64, params=params, now=NOW)
     assert check_invariants(doc) == []
     return doc
@@ -171,7 +179,7 @@ def test_long_chain_is_one_uncertain_event_never_split() -> None:
 def test_g_separates_events_more_than_g_apart() -> None:
     bells = _sum(_bell(40, width=2.0), _bell(52, width=2.0))  # 0.4 s apart
     assert len(_run(_poses(right=bells)).events) == 2  # G = 0.3
-    assert len(_run(_poses(right=bells), DetectorParams(g_s=0.5)).events) == 1
+    assert len(_run(_poses(right=bells), DetectorParams(g_s=0.5, min_kept_peaks=1)).events) == 1
 
 
 def test_weak_bell_is_discarded_and_gives_no_event() -> None:
@@ -191,6 +199,59 @@ def test_only_run_edge_peak_leaves_the_wrist_undetermined() -> None:
     assert e.status is EventStatus.UNCERTAIN and R_UNDETERMINED in e.reasons
     peak = next(p for p in doc.wrist_peaks if p.event_id == e.id)
     assert peak.prominence is not None and peak.prominence.category.value == "run_edge"
+
+
+# ------------------------------------------------------------------ height rules (V1 step 2)
+
+
+def _height_clip() -> PoseSequence:
+    """12 equal strokes (speed S), then one at 0.6 S and one at 0.33 S: the clip reference
+    (90th percentile of kept peak speeds) is S, so rel_to_clip ~ 1, 0.6 and 0.33."""
+    centres = [20 + 40 * i for i in range(12)]
+    bells = [_bell(c, amp=300, width=2.0) for c in centres]
+    bells += [_bell(500, amp=180, width=2.0), _bell(540, amp=100, width=2.0)]
+    return _poses(right=_sum(*bells), n=580)
+
+
+def test_height_rules_reject_low_and_flag_middle_events() -> None:
+    doc = _run(_height_clip(), DetectorParams())
+    by_frame = {e.time.ref_proxy_frame: e for e in doc.events}
+    assert len(doc.events) == 14
+    assert by_frame[20].status is EventStatus.ACCEPTED
+    middle, low = by_frame[500], by_frame[540]
+    assert middle.status is EventStatus.UNCERTAIN and R_HEIGHT_UNCERTAIN in middle.reasons
+    assert R_HEIGHT_REJECT not in middle.reasons
+    assert low.status is EventStatus.REJECTED and R_HEIGHT_REJECT in low.reasons
+    peak = next(p for p in doc.wrist_peaks if p.proxy_frame == 540 and p.event_id == low.id)
+    assert peak.speed.rel_to_clip == pytest.approx(1 / 3, abs=0.03)
+    step = next(s for s in low.trace if s.rule == R_HEIGHT_REJECT)
+    assert step.param == "decision.t_reject" and step.outcome.value == "fail"
+    assert low.trace[-1].outcome.value == "rejected"
+
+
+@pytest.mark.parametrize(("t_reject", "t_accept", "expected"), [
+    (0.55, 0.65, EventStatus.UNCERTAIN),  # 0.6 between the two values
+    (0.65, 0.7, EventStatus.REJECTED),  # 0.6 just below t_reject
+    (0.5, 0.55, EventStatus.ACCEPTED),  # 0.6 just above t_accept
+])  # fmt: skip
+def test_height_thresholds_on_both_sides(
+    t_reject: float, t_accept: float, expected: EventStatus
+) -> None:
+    doc = _run(_height_clip(), DetectorParams(t_reject=t_reject, t_accept=t_accept))
+    middle = next(e for e in doc.events if e.time.ref_proxy_frame == 500)
+    assert middle.status is expected
+
+
+def test_too_few_peaks_leave_the_height_unjudged() -> None:
+    doc = _run(_poses(right=_bell(60)), DetectorParams())  # 1 kept peak < 10
+    (e,) = doc.events
+    assert e.status is EventStatus.UNCERTAIN and e.reasons[0] == R_NO_CLIP_REF
+    assert all(p.speed.rel_to_clip is None for p in doc.wrist_peaks)
+
+
+def test_reject_must_not_exceed_accept() -> None:
+    with pytest.raises(ValueError):
+        DetectorParams(t_reject=0.8, t_accept=0.7)
 
 
 # ------------------------------------------------------------------ regions, coverage
@@ -395,3 +456,62 @@ def test_real_development_b_ignores_control_frames(tmp_path: Path) -> None:
         return dump_strokes(doc)
 
     assert run(poses) == run(tampered)
+
+
+def _tamper_before(poses: PoseSequence, first: int) -> PoseSequence:
+    """Frames before ``first`` changed (motion, torso size, missing poses); later untouched."""
+    frames = []
+    for f in poses.frames:
+        if f.frame_index >= first:
+            frames.append(f)
+        elif f.frame_index % 7 == 0:
+            frames.append(f.model_copy(update={"detected": False, "keypoints": []}))
+        else:
+            kps = [
+                kp.model_copy(
+                    update={
+                        "x": kp.x + (0.3 * (f.frame_index % 3) if "wrist" in kp.name else 0.0),
+                        "y": kp.y - (0.05 if "shoulder" in kp.name else 0.0),
+                    }
+                )
+                for kp in f.keypoints
+            ]
+            frames.append(f.model_copy(update={"keypoints": kps}))
+    return poses.model_copy(update={"frames": frames})
+
+
+def test_first_proxy_frame_result_ignores_earlier_frames() -> None:
+    first = 60
+    tm = _iphone_timemap(330)
+    n = tm.summary.proxy_frame_count
+    poses = _poses(right=_sum(_bell(first + 8, width=4.0), _bell(200)), n=n)
+    tampered = _tamper_before(poses, first)
+
+    def run(ps: PoseSequence) -> StrokesFile:
+        return detect(
+            ps, pose_file="pose.json", pose_sha256="0" * 64, timemap=tm,
+            timemap_file="timemap.json", timemap_sha256="1" * 64, now=NOW,
+            first_proxy_frame=first, params=ONE_PEAK_REF,
+        )  # fmt: skip
+
+    a, b = run(poses), run(tampered)
+    assert check_invariants(a) == [] and a.time_basis.value == "source"
+    assert dump_strokes(a) == dump_strokes(b)
+    assert all(p.proxy_frame >= first for p in a.wrist_peaks)
+    assert [e.time.ref_proxy_frame for e in a.events] == [first + 8, 200]
+    assert a.params["input"] == {"last_proxy_frame": None, "first_proxy_frame": first}
+    # times are those of the whole file
+    whole = build_timebase(poses, tm)
+    ref = next(e for e in a.events if e.time.ref_proxy_frame == 200).time.ref_t_s
+    assert ref == pytest.approx(float(whole.times_s[whole.proxy_frames == 200][0]), abs=1e-4)
+    # sensitive: without the cut, the tampering changes peaks after the first frame
+    fa = _detect(poses, tm, None)
+    fb = _detect(tampered, tm, None)
+    near = [p.model_dump() for p in fa.wrist_peaks if first <= p.proxy_frame < first + 30]
+    near_b = [p.model_dump() for p in fb.wrist_peaks if first <= p.proxy_frame < first + 30]
+    assert near != near_b
+
+
+def test_params_input_has_no_first_key_when_unused() -> None:
+    doc = _run(_poses(right=_bell(60)))
+    assert doc.params["input"] == {"last_proxy_frame": None}

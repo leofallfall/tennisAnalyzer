@@ -56,6 +56,9 @@ REASON_TEXT: dict[str, str] = {
         "Movimento del polso molto più lento dei colpi di questo video: probabilmente non è "
         "un colpo"
     ),
+    "reject_near_stronger_event": (
+        "Doppione: a meno di 1 secondo c'è un movimento più chiaro, tenuto come colpo"
+    ),
     "uncertain_low_relative_height": (
         "Movimento del polso più lento dei colpi tipici di questo video"
     ),

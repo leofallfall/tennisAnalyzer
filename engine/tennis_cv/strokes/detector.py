@@ -10,7 +10,11 @@ Steps (fixed order)
    *discarded* when it has no torso scale (``peak_no_torso_scale``) or a prominence below
    ``min_prominence_torso_per_s`` (``peak_below_min_prominence``, the initial provisional
    2.0). Internal and run-edge peaks follow the same rule but stay identifiable
-   (``prominence.category``).
+   (``prominence.category``). V1 review 1 (ADR-029): a peak is also discarded when the
+   tracking cannot be trusted around it, i.e. in most samples of its quality window the
+   skeleton is mostly outside the image (``peak_out_of_frame``) or its torso is far smaller
+   than usual in the clip, a skeleton on someone or something else
+   (``peak_tracking_jump``). Those stretches become *not assessable* (step 6).
 2. **Grouping** (chain): kept peaks of both wrists in time order; a new event starts when the
    gap to the previous peak is more than G. One gesture is one event, never one per peak.
 3. **Representative wrist**: the wrist of the most prominent *internal* peak of the event
@@ -23,11 +27,14 @@ Steps (fixed order)
    representative wrist is undetermined, the chain is longer than ``max_single_span_s``
    (possible merge of two strokes, never split automatically), no peak of the event has a
    mostly GOOD quality window, the representative peak's window has an irregular interval,
-   or a region used is not observable; otherwise ``accepted``. Nothing is ``rejected`` in
-   I2 (thresholds come with I3).
+   or a region used is not observable; otherwise ``accepted``. Height thresholds (ADR-027)
+   reject or make uncertain; V1 review 1 (ADR-029): of the non-rejected events closer than
+   ``min_event_gap_s`` only the strongest is kept, the others are rejected as duplicates
+   (``reject_near_stronger_event``).
 6. **Coverage**: stretches of at least ``coverage_min_duration_s`` where no stroke could
-   have been found: neither wrist has a speed value, or the torso scale is missing.
-   Insufficient evidence, not absence of strokes.
+   have been found: neither wrist has a speed value, the torso scale is missing, or the
+   tracking cannot be trusted (out of frame / tracking jump, plus the window of every peak
+   discarded for that). Insufficient evidence, not absence of strokes.
 """
 
 from __future__ import annotations
@@ -133,8 +140,10 @@ def _t(p: _Peak) -> float:
 
 
 ALGORITHM = "tpa.stroke_detector"
-ALGORITHM_VERSION = "0.2.0-v1s2"
+ALGORITHM_VERSION = "0.3.0-v1r1"
 TORSO_KEYPOINTS = ("left_shoulder", "right_shoulder", "left_hip", "right_hip")
+_SHOULDERS = ("left_shoulder", "right_shoulder")
+_HIPS = ("left_hip", "right_hip")
 LEG_KEYPOINTS = ("left_knee", "right_knee", "left_ankle", "right_ankle")
 _IRREGULAR = (IntervalStatus.LONG, IntervalStatus.SHORT, IntervalStatus.INVALID)
 _TO_SMOOTH = {
@@ -160,6 +169,9 @@ R_PROXY = "info_time_basis_proxy"
 R_HEIGHT_REJECT = "reject_low_relative_height"
 R_HEIGHT_UNCERTAIN = "uncertain_low_relative_height"
 R_NO_CLIP_REF = "uncertain_no_clip_reference"
+R_OUT_OF_FRAME = "peak_out_of_frame"
+R_TRACKING_JUMP = "peak_tracking_jump"
+R_DUPLICATE = "reject_near_stronger_event"
 
 RULES: tuple[Rule, ...] = (
     Rule(code=R_NO_SCALE, kind=RuleKind.DISCARD_PEAK,
@@ -168,6 +180,14 @@ RULES: tuple[Rule, ...] = (
     Rule(code=R_BELOW_MIN, kind=RuleKind.DISCARD_PEAK,
          description="Prominence below detector.min_prominence_torso_per_s (initial "
                      "provisional value, not validated); internal and run-edge alike"),
+    Rule(code=R_TRACKING_JUMP, kind=RuleKind.DISCARD_PEAK,
+         description="In most samples of the peak quality window the torso is shorter than "
+                     "tracking.min_torso_ratio times the clip median torso: the skeleton is "
+                     "on someone or something else (provisional)"),
+    Rule(code=R_OUT_OF_FRAME, kind=RuleKind.DISCARD_PEAK,
+         description="In most samples of the peak quality window at least "
+                     "tracking.out_of_frame_min_keypoints keypoints are outside the image: "
+                     "the player is (partly) out of frame (provisional)"),
     Rule(code=R_GROUPING, kind=RuleKind.INFO,
          description="Kept peaks of both wrists chained in time order while consecutive "
                      "peaks are at most G apart"),
@@ -198,11 +218,15 @@ RULES: tuple[Rule, ...] = (
          description="Representative peak: an irregular time interval in its quality window"),
     Rule(code=R_NOT_OBSERVABLE, kind=RuleKind.UNCERTAIN,
          description="A region used by the event is not observable"),
+    Rule(code=R_DUPLICATE, kind=RuleKind.REJECT,
+         description="Another non-rejected event less than grouping.min_event_gap_s away is "
+                     "stronger (accepted before uncertain, determined wrist, then higher "
+                     "rel_to_clip): this one is a duplicate of the same stroke (provisional)"),
     Rule(code=R_PROXY, kind=RuleKind.INFO,
          description="No usable time map: times are proxy times, not verified"),
     Rule(code=DECISION_RULE, kind=RuleKind.DECISION,
-         description="rejected if the height reject rule failed; otherwise uncertain if an "
-                     "uncertain rule failed; otherwise accepted"),
+         description="rejected if the height reject or the duplicate rule failed; otherwise "
+                     "uncertain if an uncertain rule failed; otherwise accepted"),
 )  # fmt: skip
 
 
@@ -218,6 +242,10 @@ class DetectorParams:
     min_kept_peaks: int = 10
     t_reject: float = 0.45
     t_accept: float = 0.7
+    min_event_gap_s: float = 1.0
+    out_of_frame_min_keypoints: int = 9
+    out_of_frame_margin: float = 0.01
+    min_torso_ratio: float = 0.4
     smoothing: SmoothingParams = field(default_factory=SmoothingParams)
     scale: ScaleParams = field(default_factory=ScaleParams)
     timebase: TimeBaseParams = field(default_factory=TimeBaseParams)
@@ -231,6 +259,8 @@ class DetectorParams:
             "rel_percentile",
             "t_reject",
             "t_accept",
+            "min_event_gap_s",
+            "min_torso_ratio",
         ):
             v = getattr(self, name)
             if not (math.isfinite(v) and v > 0):
@@ -240,6 +270,12 @@ class DetectorParams:
             raise ValueError("rel_percentile must be <= 100")
         if self.min_kept_peaks < 1:
             raise ValueError("min_kept_peaks must be >= 1")
+        if not 1 <= self.out_of_frame_min_keypoints <= 33:
+            raise ValueError("out_of_frame_min_keypoints must be in [1, 33]")
+        if not 0 <= self.out_of_frame_margin < 0.5:
+            raise ValueError("out_of_frame_margin must be in [0, 0.5)")
+        if self.min_torso_ratio >= 1:
+            raise ValueError("min_torso_ratio must be < 1")
         if self.t_reject > self.t_accept:
             raise ValueError("t_reject must be <= t_accept")
 
@@ -253,6 +289,13 @@ class DetectorParams:
                 "g_s": self.g_s,
                 "max_single_span_s": self.max_single_span_s,
                 "method": "chain",
+                "min_event_gap_s": self.min_event_gap_s,
+            },
+            "tracking": {
+                "out_of_frame_min_keypoints": self.out_of_frame_min_keypoints,
+                "out_of_frame_margin": self.out_of_frame_margin,
+                "min_torso_ratio": self.min_torso_ratio,
+                "torso_ratio_reference": "median GOOD torso length of the clip",
             },
             "coverage": {"min_duration_s": self.coverage_min_duration_s},
             "decision": {
@@ -321,6 +364,69 @@ def _region(s: _Samples, tb: TimeBase, lo: int, hi: int) -> Region:
         reasons=reasons,
         samples=SampleCounts(good=good, low_but_usable=low, unreliable=unreliable, missing=missing),
     )
+
+
+# ----------------------------------------------------------------------------- tracking
+
+
+@dataclass(frozen=True)
+class _Tracking:
+    """Per time-base sample: tracking that cannot be trusted (V1 review 1, ADR-029)."""
+
+    out_of_frame: BoolArray  # >= out_of_frame_min_keypoints keypoints outside the image
+    jump: BoolArray  # torso < min_torso_ratio x clip median: skeleton on something else
+    torso_ref_px: float | None  # clip median of the GOOD torso lengths
+
+    @property
+    def bad(self) -> BoolArray:
+        return self.out_of_frame | self.jump
+
+
+def _tracking(
+    poses: PoseSequence, tb: TimeBase, scale: TorsoScale, params: DetectorParams
+) -> _Tracking:
+    """Out of frame: normalised coordinates outside ``[margin, 1 - margin]`` (MediaPipe
+    extrapolates keypoints it cannot see). Jump: torso length (mid-shoulders to mid-hips,
+    whatever the visibility) below ``min_torso_ratio`` times the median of the GOOD
+    measurements of the clip; no reference (no GOOD measurement) -> never a jump."""
+    by_index = {f.frame_index: f for f in poses.frames}
+    n = tb.proxy_frames.size
+    out = np.zeros(n, dtype=bool)
+    torso = np.full(n, np.nan)
+    lo_m, hi_m = params.out_of_frame_margin, 1.0 - params.out_of_frame_margin
+    w, h = poses.image_width, poses.image_height
+    for i, fi in enumerate(tb.proxy_frames.tolist()):
+        f = by_index[fi]
+        if not f.detected:
+            continue
+        kp = {k.name: k for k in f.keypoints}
+        outside = sum(1 for k in f.keypoints if not (lo_m < k.x < hi_m and lo_m < k.y < hi_m))
+        out[i] = outside >= params.out_of_frame_min_keypoints
+        if all(n_ in kp for n_ in TORSO_KEYPOINTS):
+            sx = (kp[_SHOULDERS[0]].x + kp[_SHOULDERS[1]].x) / 2 * w
+            sy = (kp[_SHOULDERS[0]].y + kp[_SHOULDERS[1]].y) / 2 * h
+            hx = (kp[_HIPS[0]].x + kp[_HIPS[1]].x) / 2 * w
+            hy = (kp[_HIPS[0]].y + kp[_HIPS[1]].y) / 2 * h
+            torso[i] = math.hypot(sx - hx, sy - hy)
+    good = scale.measured_px[np.isfinite(scale.measured_px)]
+    ref = float(np.median(good)) if good.size else None
+    if ref is None:
+        jump = np.zeros(n, dtype=bool)
+    else:
+        with np.errstate(invalid="ignore"):
+            jump = np.isfinite(torso) & (torso < params.min_torso_ratio * ref)
+    return _Tracking(out_of_frame=out, jump=jump, torso_ref_px=ref)
+
+
+def _window(tb: TimeBase, t_s: float, half_s: float) -> tuple[int, int]:
+    t = tb.times_s
+    lo = int(np.searchsorted(t, t_s - half_s - 1e-9, side="left"))
+    hi = int(np.searchsorted(t, t_s + half_s + 1e-9, side="right")) - 1
+    return lo, max(lo, hi)
+
+
+def _mostly(mask: BoolArray, lo: int, hi: int) -> bool:
+    return bool(mask[lo : hi + 1].sum() * 2 > hi - lo + 1)
 
 
 # ----------------------------------------------------------------------------- detector
@@ -428,6 +534,7 @@ def _event(
     regions_s: dict[RegionName, _Samples],
     half_window_s: float,
     clip_ref: float | None,
+    duplicate_of: str | None = None,
 ) -> CandidateEvent:
     t = tb.times_s
     first, last = chain[0].src, chain[-1].src
@@ -498,6 +605,11 @@ def _event(
               irregular_intervals=qw.irregular_intervals)  # fmt: skip
     check(R_NOT_OBSERVABLE, state is RegionState.NOT_OBSERVABLE, eid, reliability=state.value)
     if R_HEIGHT_REJECT in reasons:
+        check(R_DUPLICATE, None, eid)
+    else:
+        check(R_DUPLICATE, duplicate_of is not None, eid, stronger_event=duplicate_of,
+              param="grouping.min_event_gap_s")  # fmt: skip
+    if R_HEIGHT_REJECT in reasons or R_DUPLICATE in reasons:
         status = EventStatus.REJECTED
     else:
         status = EventStatus.UNCERTAIN if reasons else EventStatus.ACCEPTED
@@ -555,6 +667,54 @@ def _event(
     )
 
 
+def _event_time(e: CandidateEvent) -> float:
+    """Time shown in the app: the reference time, else the window start."""
+    return e.time.ref_t_s if e.time.ref_t_s is not None else e.time.window_t_s[0]
+
+
+def _strength(
+    e: CandidateEvent, peaks: dict[str, _Peak], clip_ref: float | None
+) -> tuple[bool, bool, float, float]:
+    """Accepted before uncertain, determined wrist before undetermined, then the highest
+    relative speed of the height peak, then earlier."""
+    own = [peaks[pid] for pid in e.grouping.peak_ids]
+    rep = next(
+        (p for p in own if p.src.sample.proxy_frame == e.time.ref_proxy_frame
+         and p.src.wrist == e.representative_wrist.value.value),
+        None,
+    )  # fmt: skip
+    height = rep if rep is not None else max(own, key=lambda p: p.src.speed_px_per_s)
+    rel = _rel(height, clip_ref)
+    return (
+        e.status is EventStatus.ACCEPTED,
+        e.time.ref_t_s is not None,
+        rel if rel is not None else -1.0,
+        -_event_time(e),
+    )
+
+
+def _duplicates(
+    events: list[CandidateEvent],
+    peaks: dict[str, _Peak],
+    clip_ref: float | None,
+    min_gap_s: float,
+) -> dict[str, str]:
+    """Event id -> id of the stronger kept event less than ``min_gap_s`` away (greedy, by
+    strength). Rejected events neither win nor lose."""
+    live = [e for e in events if e.status is not EventStatus.REJECTED]
+    order = sorted(live, key=lambda e: _strength(e, peaks, clip_ref), reverse=True)
+    kept: list[CandidateEvent] = []
+    out: dict[str, str] = {}
+    for e in order:
+        t = _event_time(e)
+        near = [k for k in kept if abs(_event_time(k) - t) < min_gap_s - TIME_TOLERANCE_S]
+        if near:
+            out[e.id] = min(near, key=lambda k: abs(_event_time(k) - t)).id
+        else:
+            kept.append(e)
+    return out
+
+
 def _coverage(
     tb: TimeBase,
     vels: dict[Side, KeypointVelocity],
@@ -562,13 +722,16 @@ def _coverage(
     scale: TorsoScale,
     torso: _Samples,
     min_duration_s: float,
+    untracked: BoolArray | None = None,
 ) -> Coverage:
     n = tb.times_s.size
     no_wrist = np.ones(n, dtype=bool)
     for v in vels.values():
         no_wrist &= ~np.isfinite(v.speed_2d_px_per_s)
     no_scale = np.array([s is not ScaleState.OK for s in scale.state], dtype=bool)
-    bad = no_wrist | no_scale
+    if untracked is None:
+        untracked = np.zeros(n, dtype=bool)
+    bad = no_wrist | no_scale | untracked
     stretches: list[CoverageStretch] = []
     i = 0
     while i < n:
@@ -600,6 +763,10 @@ def _coverage(
                     if no_scale[k]:
                         miss = bool(torso.missing[k])
                         reasons.add(RegionReason.NO_POSE if miss else RegionReason.BELOW_THRESHOLD)
+            if untracked[i : j + 1].any():
+                # skeleton out of frame or on something else: no region can be trusted
+                regions = [RegionName.TORSO, RegionName.LEFT_WRIST, RegionName.RIGHT_WRIST]
+                reasons.add(RegionReason.OUT_OF_FRAME)
             stretches.append(
                 CoverageStretch(
                     start_proxy_frame=int(tb.proxy_frames[i]),
@@ -705,15 +872,28 @@ def detect(
         cands += wp.peaks
         half_window_s = wp.half_window_s
     cands.sort(key=lambda c: (c.sample.t_s, c.wrist))
+    trk = _tracking(poses, tb, scale, params)
+    # Untrusted stretches; the window of every peak discarded for tracking is added so that
+    # the stretch it was in is always shown as not assessable (at least min_duration_s).
+    untracked = trk.bad.copy()
+    mark_half_s = max(half_window_s, params.coverage_min_duration_s / 2)
     peaks: list[_Peak] = []
     for k, c in enumerate(cands, start=1):
         prom = c.prominence_torso_per_s
+        lo, hi = _window(tb, c.sample.t_s, c.half_window_s)
         if prom is None:
             reasons: tuple[str, ...] = (R_NO_SCALE,)
         elif prom < params.min_prominence_torso_per_s:
             reasons = (R_BELOW_MIN,)
+        elif _mostly(trk.jump, lo, hi):
+            reasons = (R_TRACKING_JUMP,)
+        elif _mostly(trk.out_of_frame, lo, hi):
+            reasons = (R_OUT_OF_FRAME,)
         else:
             reasons = ()
+        if reasons and reasons[0] in (R_TRACKING_JUMP, R_OUT_OF_FRAME):
+            mlo, mhi = _window(tb, c.sample.t_s, mark_half_s)
+            untracked[mlo : mhi + 1] = True
         peaks.append(_Peak(id=f"p{k:05d}", src=c, kept=not reasons, reasons=reasons))
 
     regions_s = {
@@ -727,18 +907,30 @@ def detect(
     if half_window_s <= 0:  # no peak at all: use the M2.2 fit half-window directly
         w = params.smoothing.window_samples(tb.nominal_interval_s)
         half_window_s = (w // 2) * tb.nominal_interval_s
+    # Reference height as calibrated in ADR-027: the peaks that pass the prominence rule,
+    # tracking discards included, so the height thresholds keep their meaning (ADR-029).
+    ref_peaks = [p for p in peaks if p.kept or p.reasons[0] in (R_TRACKING_JUMP, R_OUT_OF_FRAME)]
     kept_speeds = [
-        p.src.speed_torso_per_s for p in peaks if p.kept and p.src.speed_torso_per_s is not None
+        p.src.speed_torso_per_s for p in ref_peaks if p.src.speed_torso_per_s is not None
     ]
     clip_ref = (
         float(np.percentile(kept_speeds, params.rel_percentile))
         if len(kept_speeds) >= params.min_kept_peaks
         else None
     )
-    for k, chain in enumerate(_chain([p for p in peaks if p.kept], params.g_s), start=1):
+    chains = _chain([p for p in peaks if p.kept], params.g_s)
+    for k, chain in enumerate(chains, start=1):
         eid = f"e{k:04d}"
         events.append(_event(eid, chain, params, tb, regions_s, half_window_s, clip_ref))
         owner.update({p.id: eid for p in chain})
+    by_id = {p.id: p for p in peaks}
+    dupes = _duplicates(events, by_id, clip_ref, params.min_event_gap_s)
+    events = [
+        _event(e.id, chain, params, tb, regions_s, half_window_s, clip_ref, dupes[e.id])
+        if e.id in dupes
+        else e
+        for e, chain in zip(events, chains, strict=True)
+    ]
 
     if tb.basis is TimeBasis.SOURCE:
         tm_input = TimemapInput(file=timemap_file, sha256=timemap_sha256, status=tb.map_status)
@@ -783,6 +975,7 @@ def detect(
             scale,
             regions_s[RegionName.TORSO],
             params.coverage_min_duration_s,
+            untracked,
         ),
     )
 

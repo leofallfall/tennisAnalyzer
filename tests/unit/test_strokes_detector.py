@@ -34,12 +34,15 @@ from tennis_cv.strokes.artifact import (
 )
 from tennis_cv.strokes.detector import (
     R_BELOW_MIN,
+    R_DUPLICATE,
     R_HEIGHT_REJECT,
     R_HEIGHT_UNCERTAIN,
     R_MERGE,
     R_NO_CLIP_REF,
+    R_OUT_OF_FRAME,
     R_PROXY,
     R_REP_ONLY_EDGE,
+    R_TRACKING_JUMP,
     R_UNDETERMINED,
     DetectorParams,
     detect,
@@ -288,6 +291,102 @@ def test_no_pose_gives_no_event_and_one_stretch() -> None:
     assert doc.coverage is not None
     (s,) = doc.coverage.not_assessable
     assert (s.start_proxy_frame, s.end_proxy_frame) == (0, 119)
+
+
+# ------------------------------------------------------------------ V1 review 1 (ADR-029)
+
+
+def _edit(
+    poses: PoseSequence, frames: Any, move: Callable[[str, float, float], Any]
+) -> PoseSequence:
+    """Copy with ``move(name, x, y) -> (x, y)`` (normalised) applied in ``frames``."""
+    out = []
+    for f in poses.frames:
+        if f.frame_index in frames:
+            kps = [
+                k.model_copy(update=dict(zip(("x", "y"), move(k.name, k.x, k.y), strict=True)))
+                for k in f.keypoints
+            ]
+            f = f.model_copy(update={"keypoints": kps})
+        out.append(f)
+    return poses.model_copy(update={"frames": out})
+
+
+def _legs_out(name: str, x: float, y: float) -> tuple[float, float]:
+    return (x, 1.2) if name.endswith(("knee", "ankle")) else (x, y)
+
+
+def test_duplicate_within_min_gap_is_rejected_in_favour_of_the_stronger() -> None:
+    bells = _sum(_bell(40, width=2.0), _bell(52, amp=240, width=2.0))  # 0.4 s apart
+    doc = _run(_poses(right=bells))
+    strong, weak = doc.events
+    assert strong.status is EventStatus.ACCEPTED and R_DUPLICATE not in strong.reasons
+    assert weak.status is EventStatus.REJECTED and R_DUPLICATE in weak.reasons
+    step = next(s for s in weak.trace if s.rule == R_DUPLICATE)
+    assert step.inputs["stronger_event"] == strong.id
+    assert weak.trace[-1].outcome.value == "rejected"
+
+
+def test_events_at_least_min_gap_apart_are_both_kept() -> None:
+    doc = _run(_poses(right=_sum(_bell(30), _bell(66, amp=240))))  # 1.2 s apart
+    assert [e.status for e in doc.events] == [EventStatus.ACCEPTED] * 2
+    assert all(R_DUPLICATE not in e.reasons for e in doc.events)
+    shorter = _run(_poses(right=_sum(_bell(30), _bell(66, amp=240))),
+                   DetectorParams(min_kept_peaks=1, min_event_gap_s=1.5))  # fmt: skip
+    assert [e.status for e in shorter.events] == [EventStatus.ACCEPTED, EventStatus.REJECTED]
+
+
+def test_out_of_frame_peak_is_discarded_and_the_stretch_not_assessable() -> None:
+    poses = _edit(_poses(right=_bell(60)), range(45, 76), _legs_out)  # 4 keypoints outside
+    doc = _run(poses, DetectorParams(min_kept_peaks=1, out_of_frame_min_keypoints=4))
+    assert doc.events == []
+    assert any(p.reasons == [R_OUT_OF_FRAME] for p in doc.wrist_peaks)
+    assert doc.coverage is not None
+    (s,) = [
+        s for s in doc.coverage.not_assessable if s.start_proxy_frame <= 60 <= s.end_proxy_frame
+    ]
+    assert RegionReason.OUT_OF_FRAME in s.reasons
+    assert s.regions == [RegionName.TORSO, RegionName.LEFT_WRIST, RegionName.RIGHT_WRIST]
+    # default (9 keypoints): 4 legs outside is not "out of frame"
+    assert len(_run(poses).events) == 1
+
+
+def test_short_out_of_frame_blip_still_shows_a_stretch_of_min_duration() -> None:
+    poses = _edit(_poses(right=_bell(60)), range(58, 63), _legs_out)  # 5 frames only
+    doc = _run(poses, DetectorParams(min_kept_peaks=1, out_of_frame_min_keypoints=4))
+    assert doc.events == []
+    assert doc.coverage is not None
+    (s,) = [
+        s for s in doc.coverage.not_assessable if s.start_proxy_frame <= 60 <= s.end_proxy_frame
+    ]
+    assert s.end_t_s - s.start_t_s + 1 / FPS >= 0.3 - 1e-3  # duration as in coverage
+
+
+def test_tiny_torso_is_a_tracking_jump() -> None:
+    def shrink(name: str, x: float, y: float) -> tuple[float, float]:
+        if name.endswith(("shoulder", "hip")):  # torso 200 px -> 20 px (centre y 600)
+            return x, (600 + (y * 1280 - 600) / 10) / 1280
+        return x, y
+
+    poses = _edit(_poses(right=_bell(60)), range(45, 76), shrink)
+    doc = _run(poses)
+    assert doc.events == []
+    assert any(p.reasons == [R_TRACKING_JUMP] for p in doc.wrist_peaks)
+    assert doc.coverage is not None
+    assert any(
+        RegionReason.OUT_OF_FRAME in s.reasons and s.start_proxy_frame <= 60 <= s.end_proxy_frame
+        for s in doc.coverage.not_assessable
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("min_event_gap_s", 0.0), ("min_torso_ratio", 1.0), ("min_torso_ratio", 0.0),
+     ("out_of_frame_min_keypoints", 0), ("out_of_frame_margin", 0.5)],
+)  # fmt: skip
+def test_review_params_are_checked(field: str, value: float) -> None:
+    with pytest.raises(ValueError):
+        dataclasses.replace(DetectorParams(), **{field: value})
 
 
 # ------------------------------------------------------------------ file

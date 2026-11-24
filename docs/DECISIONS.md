@@ -742,3 +742,36 @@ but the swing is not (7 of his "fuori inquadratura" events stay *da verificare*,
 them real strokes). Two
 strokes closer than 1 s would be counted once: none in the labelled data (closest pair
 1.17 s). Values chosen on one session plus Development A: an upper bound.
+
+### ADR-030 V1 review 2: a player at the side edge is out of frame (2026-11-24)
+
+**Context:** in the developer's review of the second part of IMG_5098 (img5098_full frames
+5168-9470, all Control), half of the strokes he marked "fuori inquadratura" were still *da
+verificare*. Two kinds: (a) the body is inside the image and only the racket or the ball
+leaves it (all 33 keypoints inside; not detectable from the pose); (b) the player is at the
+right edge (mid-shoulder x 0.93-0.97) but MediaPipe keeps most keypoints just inside it, so
+fewer than 9 are outside. The developer: strokes going out of frame must not be shown as
+strokes; it is fine not to be too strict elsewhere.
+**Decision** (detector `0.3.1-v1r3`): a sample is also *out of frame* when the mid-shoulder
+point is within `tracking.edge_margin` = **0.075** of the left or right image edge. Same
+rule code (`peak_out_of_frame`), same handling (peak discarded, *non valutabile* stretch).
+The value was chosen on Development A/B only, half-way between the labelled strokes:
+impact visibility *full* reaches 0.90 (img5098_full 764) and 0.15, visibility *none* starts
+at 0.95; the Control video was looked at only afterwards, as regression.
+**Result:**
+- Development A: 25/29 → 24/29 found: img4912_2min 1023 (forehand, visibility *partial*,
+  shoulders at 0.97) is now *non valutabile*. No other labelled stroke changes.
+- Development B (0-4499): unchanged (16/24; the labelled strokes at the edge were already
+  out of frame by the keypoint count).
+- First IMG_5098 video (his sheet, frames < 4500): 4 events become *non valutabile*: three
+  he marked out of frame (0:45.47, 1:35.87, 1:45.90; 1:35.87 a real stroke) and one false
+  (1:28.83). *Colpo segnalato* 18, *da verificare* 19 → 17, discarded 58 → 50 (some
+  duplicates were out of frame).
+- Control regression (second video, run after the value was fixed): only his two edge
+  cases change (0:59.37, 2:22.77 → *non valutabile*); the 13 *colpo segnalato*, all real,
+  are unchanged; *da verificare* 18 → 16.
+**Alternatives:** lowering the keypoint count (risks hitting players whose legs leave the bottom
+of the frame); a margin from the Control cases (not allowed: regression data); hips instead
+of shoulders (similar values, the shoulders follow the upper body that hits).
+**Consequences:** case (a) remains (racket or ball out, body in). Real strokes played at the
+side edge are no longer shown, by the developer's choice.

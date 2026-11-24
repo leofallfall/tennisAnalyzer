@@ -30,7 +30,8 @@ Steps (fixed order)
    or a region used is not observable; otherwise ``accepted``. Height thresholds (ADR-027)
    reject or make uncertain; V1 review 1 (ADR-029): of the non-rejected events closer than
    ``min_event_gap_s`` only the strongest is kept, the others are rejected as duplicates
-   (``reject_near_stronger_event``).
+   (``reject_near_stronger_event``). An event whose height peak has the wrist moving mostly
+   downward (follow-through, racket drop) is never stronger than one that does not.
 6. **Coverage**: stretches of at least ``coverage_min_duration_s`` where no stroke could
    have been found: neither wrist has a speed value, the torso scale is missing, or the
    tracking cannot be trusted (out of frame / tracking jump, plus the window of every peak
@@ -140,7 +141,7 @@ def _t(p: _Peak) -> float:
 
 
 ALGORITHM = "tpa.stroke_detector"
-ALGORITHM_VERSION = "0.3.0-v1r1"
+ALGORITHM_VERSION = "0.3.0-v1r2"
 TORSO_KEYPOINTS = ("left_shoulder", "right_shoulder", "left_hip", "right_hip")
 _SHOULDERS = ("left_shoulder", "right_shoulder")
 _HIPS = ("left_hip", "right_hip")
@@ -220,8 +221,9 @@ RULES: tuple[Rule, ...] = (
          description="A region used by the event is not observable"),
     Rule(code=R_DUPLICATE, kind=RuleKind.REJECT,
          description="Another non-rejected event less than grouping.min_event_gap_s away is "
-                     "stronger (accepted before uncertain, determined wrist, then higher "
-                     "rel_to_clip): this one is a duplicate of the same stroke (provisional)"),
+                     "stronger (height peak not moving mostly downward, then accepted before "
+                     "uncertain, determined wrist, higher rel_to_clip): this one is a "
+                     "duplicate of the same stroke (provisional)"),
     Rule(code=R_PROXY, kind=RuleKind.INFO,
          description="No usable time map: times are proxy times, not verified"),
     Rule(code=DECISION_RULE, kind=RuleKind.DECISION,
@@ -290,6 +292,8 @@ class DetectorParams:
                 "max_single_span_s": self.max_single_span_s,
                 "method": "chain",
                 "min_event_gap_s": self.min_event_gap_s,
+                "duplicate_order": "not descending, accepted, determined wrist, rel_to_clip, "
+                "earlier",
             },
             "tracking": {
                 "out_of_frame_min_keypoints": self.out_of_frame_min_keypoints,
@@ -672,20 +676,38 @@ def _event_time(e: CandidateEvent) -> float:
     return e.time.ref_t_s if e.time.ref_t_s is not None else e.time.window_t_s[0]
 
 
-def _strength(
-    e: CandidateEvent, peaks: dict[str, _Peak], clip_ref: float | None
-) -> tuple[bool, bool, float, float]:
-    """Accepted before uncertain, determined wrist before undetermined, then the highest
-    relative speed of the height peak, then earlier."""
+def _height_peak(e: CandidateEvent, peaks: dict[str, _Peak]) -> _Peak:
+    """Representative peak, or the fastest peak when the wrist is undetermined."""
     own = [peaks[pid] for pid in e.grouping.peak_ids]
     rep = next(
         (p for p in own if p.src.sample.proxy_frame == e.time.ref_proxy_frame
          and p.src.wrist == e.representative_wrist.value.value),
         None,
     )  # fmt: skip
-    height = rep if rep is not None else max(own, key=lambda p: p.src.speed_px_per_s)
+    return rep if rep is not None else max(own, key=lambda p: p.src.speed_px_per_s)
+
+
+def _descending(p: _Peak, vels: dict[Side, KeypointVelocity]) -> bool:
+    """At the peak the wrist moves mostly downward in the image (more than 45 degrees below
+    the horizontal; image y grows downward)."""
+    v = vels[p.src.wrist]
+    i = p.src.sample.index
+    vx, vy = float(v.vx_px_per_s[i]), float(v.vy_px_per_s[i])
+    return math.isfinite(vx) and math.isfinite(vy) and vy > abs(vx)
+
+
+def _strength(
+    e: CandidateEvent,
+    peaks: dict[str, _Peak],
+    clip_ref: float | None,
+    vels: dict[Side, KeypointVelocity],
+) -> tuple[bool, bool, bool, float, float]:
+    """Not descending first, then accepted before uncertain, determined wrist before
+    undetermined, then the highest relative speed of the height peak, then earlier."""
+    height = _height_peak(e, peaks)
     rel = _rel(height, clip_ref)
     return (
+        not _descending(height, vels),
         e.status is EventStatus.ACCEPTED,
         e.time.ref_t_s is not None,
         rel if rel is not None else -1.0,
@@ -698,11 +720,12 @@ def _duplicates(
     peaks: dict[str, _Peak],
     clip_ref: float | None,
     min_gap_s: float,
+    vels: dict[Side, KeypointVelocity],
 ) -> dict[str, str]:
     """Event id -> id of the stronger kept event less than ``min_gap_s`` away (greedy, by
     strength). Rejected events neither win nor lose."""
     live = [e for e in events if e.status is not EventStatus.REJECTED]
-    order = sorted(live, key=lambda e: _strength(e, peaks, clip_ref), reverse=True)
+    order = sorted(live, key=lambda e: _strength(e, peaks, clip_ref, vels), reverse=True)
     kept: list[CandidateEvent] = []
     out: dict[str, str] = {}
     for e in order:
@@ -924,7 +947,7 @@ def detect(
         events.append(_event(eid, chain, params, tb, regions_s, half_window_s, clip_ref))
         owner.update({p.id: eid for p in chain})
     by_id = {p.id: p for p in peaks}
-    dupes = _duplicates(events, by_id, clip_ref, params.min_event_gap_s)
+    dupes = _duplicates(events, by_id, clip_ref, params.min_event_gap_s, vels)
     events = [
         _event(e.id, chain, params, tb, regions_s, half_window_s, clip_ref, dupes[e.id])
         if e.id in dupes

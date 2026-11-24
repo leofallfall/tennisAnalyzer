@@ -336,6 +336,33 @@ def test_events_at_least_min_gap_apart_are_both_kept() -> None:
     assert [e.status for e in shorter.events] == [EventStatus.ACCEPTED, EventStatus.REJECTED]
 
 
+def _drop_right_wrist(poses: PoseSequence, down: Pos) -> PoseSequence:
+    """Copy where the right wrist also moves down the image by ``down(k)`` pixels."""
+    frames = []
+    for f in poses.frames:
+        kps = [
+            k.model_copy(update={"y": k.y + down(f.frame_index) / 1280})
+            if k.name == "right_wrist"
+            else k
+            for k in f.keypoints
+        ]
+        frames.append(f.model_copy(update={"keypoints": kps}))
+    return poses.model_copy(update={"frames": frames})
+
+
+def test_descending_event_never_beats_a_close_one() -> None:
+    # a horizontal swing at 40, a faster drop of the wrist at 52 (0.4 s later)
+    poses = _drop_right_wrist(_poses(right=_bell(40, amp=240, width=2.0)), _bell(52, width=2.0))
+    doc = _run(poses)
+    swing, drop = doc.events
+    assert (swing.time.ref_proxy_frame, drop.time.ref_proxy_frame) == (40, 52)
+    assert swing.status is EventStatus.ACCEPTED and R_DUPLICATE not in swing.reasons
+    assert drop.status is EventStatus.REJECTED and R_DUPLICATE in drop.reasons
+    # the same two movements, both horizontal: the faster one (52) is kept
+    flat = _run(_poses(right=_sum(_bell(40, amp=240, width=2.0), _bell(52, width=2.0))))
+    assert [R_DUPLICATE in e.reasons for e in flat.events] == [True, False]
+
+
 def test_out_of_frame_peak_is_discarded_and_the_stretch_not_assessable() -> None:
     poses = _edit(_poses(right=_bell(60)), range(45, 76), _legs_out)  # 4 keypoints outside
     doc = _run(poses, DetectorParams(min_kept_peaks=1, out_of_frame_min_keypoints=4))

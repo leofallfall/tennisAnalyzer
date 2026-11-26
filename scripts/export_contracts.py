@@ -23,6 +23,7 @@ from tennis_cv.evaluation.eval_artifact import StrokesEvalFile
 from tennis_cv.pipeline import ProcessingReport
 from tennis_cv.pose.models import PoseSequence
 from tennis_cv.strokes.artifact import StrokesFile
+from tennis_cv.strokes.review import StrokesReview
 from tennis_cv.video.timemap import TimeMap
 
 SCHEMA_DIR = Path(__file__).resolve().parents[1] / "packages" / "contracts" / "schema"
@@ -32,6 +33,7 @@ CONTRACTS: dict[str, type[BaseModel]] = {
     "time_map": TimeMap,
     "strokes_v1": StrokesFile,
     "strokes_eval_v1": StrokesEvalFile,
+    "strokes_review_v1": StrokesReview,
     "measurement": Measurement,
     "observation": Observation,
     "interpretation": Interpretation,

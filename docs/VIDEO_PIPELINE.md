@@ -170,8 +170,20 @@ reasons in words from `tennis_cv.strokes.states` (*colpo segnalato* / *da verifi
 are hidden in the web app unless asked for; not-assessable stretches are labelled as
 insufficient evidence, never as absence of strokes.
 
-Not yet: forehand/backhand classification, per-stroke quality gating beyond the states,
-phase segmentation, metrics, aggregation.
+**Corrections by hand (personal V1 step 5, ADR-031).** The user's corrections are stored
+in `strokes_review.json` next to `strokes.json` (`tennis_cv.strokes.review`); the detector
+output is only read, and a new detection keeps them. Endpoints under
+`/api/analyses/{id}/videos/{video_id}/strokes/review`: `POST entries` (with `event_id`:
+confirm, move or delete that event with a reason; without: add a missed stroke), `PUT` /
+`DELETE entries/{entry_id}` (change or undo), `POST stretches` / `DELETE stretches/{id}`
+(reviewed stretches, merged when they overlap or touch), `GET export` (zip with
+`labels.csv` and `annotated.csv` in the docs/M2_1_DATASET.md §4 format, plus `LEGGIMI.txt`).
+Every change answers with the whole strokes view, where each event carries its `review`
+and `my_strokes` lists added strokes and corrections whose event changed after a new
+detection (*detached*: same id gone, or its frame moved by more than 3 frames).
+
+Not yet: automatic forehand/backhand classification, per-stroke quality gating beyond the
+states, phase segmentation, metrics, aggregation.
 
 ## 11. Storage layout
 
@@ -181,6 +193,7 @@ storage/
   videos/<video_id>/original.<ext>
   analyses/<analysis_id>/videos/<video_id>/
       proxy.mp4  pose.json  overlay.mp4  report.json  timemap.json  strokes.json
+      strokes_review.json   (user corrections, ADR-031; never written by the worker)
 ```
 
 `report.json` (`ProcessingReport`) also lists `not_performed` analyses explicitly. File

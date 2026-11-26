@@ -1,0 +1,233 @@
+{
+  "$defs": {
+    "EventLink": {
+      "additionalProperties": false,
+      "properties": {
+        "algorithm_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Algorithm Version",
+          "type": "string"
+        },
+        "event_frame": {
+          "description": "Event frame when corrected (see event_frame())",
+          "minimum": 0,
+          "title": "Event Frame",
+          "type": "integer"
+        },
+        "event_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "event_frame",
+        "algorithm_version"
+      ],
+      "title": "EventLink",
+      "type": "object"
+    },
+    "ImpactVisibility": {
+      "description": "Human judgement of how well the impact can be seen in the video.",
+      "enum": [
+        "full",
+        "partial",
+        "none"
+      ],
+      "title": "ImpactVisibility",
+      "type": "string"
+    },
+    "NotStrokeReason": {
+      "enum": [
+        "duplicate",
+        "not_a_stroke",
+        "other_person",
+        "out_of_frame",
+        "other"
+      ],
+      "title": "NotStrokeReason",
+      "type": "string"
+    },
+    "ReviewEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EventLink"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "frame": {
+          "description": "Proxy frame of the stroke (the user's frame)",
+          "minimum": 0,
+          "title": "Frame",
+          "type": "integer"
+        },
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/ReviewKind"
+        },
+        "note": {
+          "default": "",
+          "maxLength": 500,
+          "title": "Note",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NotStrokeReason"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "stroke_type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewStrokeType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "visibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImpactVisibility"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How well the user sees the impact; null = not said"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "frame",
+        "updated_at"
+      ],
+      "title": "ReviewEntry",
+      "type": "object"
+    },
+    "ReviewKind": {
+      "enum": [
+        "stroke",
+        "not_stroke"
+      ],
+      "title": "ReviewKind",
+      "type": "string"
+    },
+    "ReviewStrokeType": {
+      "description": "Types the user sets by hand (ADR-025): forehand, backhand, anything else.",
+      "enum": [
+        "forehand",
+        "backhand",
+        "other"
+      ],
+      "title": "ReviewStrokeType",
+      "type": "string"
+    },
+    "ReviewedStretch": {
+      "additionalProperties": false,
+      "properties": {
+        "end_frame": {
+          "description": "Included",
+          "minimum": 0,
+          "title": "End Frame",
+          "type": "integer"
+        },
+        "id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "start_frame": {
+          "minimum": 0,
+          "title": "Start Frame",
+          "type": "integer"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "start_frame",
+        "end_frame",
+        "updated_at"
+      ],
+      "title": "ReviewedStretch",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "entries": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ReviewEntry"
+      },
+      "title": "Entries",
+      "type": "array"
+    },
+    "reviewed_stretches": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ReviewedStretch"
+      },
+      "title": "Reviewed Stretches",
+      "type": "array"
+    },
+    "schema": {
+      "const": "tpa.strokes_review",
+      "default": "tpa.strokes_review",
+      "title": "Schema",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "video_id": {
+      "minLength": 1,
+      "title": "Video Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "video_id"
+  ],
+  "title": "StrokesReview",
+  "type": "object"
+}

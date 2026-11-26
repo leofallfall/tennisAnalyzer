@@ -29,6 +29,7 @@ from tennis_api.schemas import (
 )
 from tennis_api.storage import ARTIFACT_NAMES, analysis_video_dir
 from tennis_api.strokes_view import strokes_view
+from tennis_cv.strokes.review import REVIEW_FILE, load_review
 
 router = APIRouter(prefix="/api/analyses", tags=["analyses"])
 
@@ -255,4 +256,5 @@ def get_strokes(analysis_id: str, video_id: str, db: DbDep, settings: SettingsDe
     )
     if not path.is_file():
         raise ApiError(404, "strokes_not_available", "No strokes detected for this video yet")
-    return strokes_view(path, analysis_id, video_id)
+    review = load_review(path.with_name(REVIEW_FILE), video_id)
+    return strokes_view(path, analysis_id, video_id, review)

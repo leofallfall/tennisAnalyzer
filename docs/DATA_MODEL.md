@@ -97,6 +97,20 @@ stroke_count_observable, summary (JSON)`.
 type_confidence, interval (start_s,end_s on the primary video), estimated_contact_s,
 movement_condition (stationary|moving), quality (JSON), observability, excluded_reason?`.
 
+### StrokesReview **[implemented, personal V1 step 5, ADR-031]**
+A file, not a table: `strokes_review.json` (schema `tpa.strokes_review` 1.0,
+`packages/contracts/schema/strokes_review_v1.schema.json`) next to `strokes.json` in the
+analysis video folder. Never written by the detector or the worker.
+`entries[]`: `id, kind (stroke|not_stroke), frame (proxy frame, the user's truth),
+stroke_type (forehand|backhand|other|null), visibility (full|partial|none|null: how well
+the user sees the impact), reason (duplicate|not_a_stroke|other_person|out_of_frame|other,
+only for not_stroke), note, event? {event_id, event_frame, algorithm_version}, updated_at`.
+`kind = not_stroke` exists only for a detector event. One correction per event, one stroke
+per frame. `reviewed_stretches[]`: `id, start_frame, end_frame (included), updated_at`, never
+overlapping. Shown actions: confirmed (same frame as the event), moved, deleted, added
+(no event), detached (the event is gone or moved by more than 3 frames after a new
+detection). Exported as `labels.csv` (player `A`) + `annotated.csv` (`all`, `A`).
+
 ### StrokeView *(multi-angle)*
 `stroke_id, video_id, interval_in_video, time_offset_s, camera_view_id`.
 **One stroke, many videos**: each angle is a StrokeView pointing at the same Stroke, with

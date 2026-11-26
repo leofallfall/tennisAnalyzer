@@ -775,3 +775,60 @@ of the frame); a margin from the Control cases (not allowed: regression data); h
 of shoulders (similar values, the shoulders follow the upper body that hits).
 **Consequences:** case (a) remains (racket or ball out, body in). Real strokes played at the
 side edge are no longer shown, by the developer's choice.
+
+### ADR-031 Personal V1 step 5: corrections by hand, kept apart from the detector (2026-11-26)
+
+**Context:** ADR-025 step 5. The developer needs to confirm, delete, move and add strokes,
+set the type and mark the parts of the video already gone through, without touching the
+detector output, and to reuse the result as labels for `evaluate`.
+**Decision:**
+- **Storage:** `strokes_review.json` (schema `tpa.strokes_review` 1.0,
+  `tennis_cv.strokes.review`) next to `strokes.json`, written only by the API on a user
+  action (atomic replace). The detector and the worker never read or write it, so a new
+  detection keeps every correction. No database table: the corrections stay with the
+  video's artifacts, readable and backed up with them.
+- **One entry per correction, the user's frame is the truth.** `stroke` = "there is a
+  stroke at this proxy frame" (confirm = the event's frame, move = another frame, add = no
+  event); `not_stroke` = "this detector event is not a stroke", only for an event, with a
+  closed reason (doppione, non è un colpo, scheletro su altro, fuori inquadratura, altro)
+  and a free note. A linked entry records event id, event frame and detector version.
+- **After a new detection** the entry still applies to the event with the same id if its
+  frame moved by at most 3 frames; otherwise it is shown apart as *detached* ("il
+  rilevatore è cambiato") with its own frame, type and note. Nothing is matched by
+  guessing.
+- **Type set by hand:** *Dritto* / *Rovescio* / *Altro* (`forehand` / `backhand` /
+  `other`); setting a type on an event confirms it. Optional impact visibility as in
+  `labels.csv` (*si vede* / *in parte* / *non si vede*); never filled in automatically.
+- **Reviewed stretches:** start and end at the player's current frame; overlapping or
+  touching stretches are merged. Meaning: every stroke of the player there is confirmed or
+  added; anything else there is not a stroke.
+- **Export** (`GET .../strokes/review/export`): zip with `labels.csv` (player `A`) and, when
+  there are reviewed stretches, `annotated.csv` (`all`, `A`: exhaustive intervals, rule P2).
+  A stroke without type or visibility, or outside the reviewed stretches when there are
+  some, is not written and is listed as a `#` comment, so `eval_strokes.py check` accepts
+  the files as they are. Deleted events are not written as `none` labels (inside a reviewed
+  stretch an unmatched event is already false). The `MANIFEST.md` row stays by hand
+  (other people, occlusion and split cannot be known by the app); `LEGGIMI.txt` gives the
+  `pose_dir`.
+- **UI** (strokes panel, Italian): under each event *Conferma*, *Tipo*, *Impatto*, *Sposta
+  qui (#frame)*, *Elimina…* with the reason, a note, *Annulla correzione*; a toolbar with
+  *Aggiungi colpo qui*, *Inizio / Fine tratto rivisto*, the list of reviewed stretches and
+  the export; counts of corrections, never rates. On the timeline: a green ring on corrected
+  events, green diamonds for added strokes, a green band for reviewed stretches. Events
+  deleted by the user are hidden like *scartati*; a discarded event confirmed by the user is
+  shown. The detector state and reasons stay visible next to the correction.
+- **Overlapping markers** on long videos: an *Ingrandisci* switch shows 20 s around the
+  video's current point.
+- The case log (classification of cases) stays outside the app, as ADR-025 says; the notes
+  of the corrections are its input.
+**Alternatives:** a database table (corrections far from the artifacts they refer to, harder
+to inspect and to export with the video); writing corrections into `strokes.json` (mixes
+the user's truth with the detector's and is lost on a new detection); matching corrections
+to new events by nearest time (silent guesses when the detector changes); dragging markers
+to move a stroke (imprecise on long videos; the player's frame stepping is exact); a
+default impact visibility in the export (would invent data).
+**Consequences:** `strokes_review.json` is a new user-data file that must be backed up with
+the analyses folder. Labels exported from the developer's own review are not independent
+validation; a video already used for development stays *already used* (ADR-025). Corrections
+made on Control videos are regression data only.
+

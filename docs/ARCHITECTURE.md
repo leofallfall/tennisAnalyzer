@@ -24,7 +24,7 @@
                                        └──────────────────────┘
         storage/  videos/<id>/original.*     analyses/<id>/videos/<vid>/{proxy.mp4,
                                                 pose.json, overlay.mp4, report.json,
-                                                strokes.json}
+                                                strokes.json, strokes_review.json}
 ```
 
 ## Modules and responsibilities
@@ -47,7 +47,7 @@
 | `pose` | experimental | `PoseEstimator` ABC, MediaPipe Pose Landmarker (VIDEO mode), overlay |
 | `biomechanics` | experimental | Metric catalogue, `Measurement`, evidence layers, 2D projected angles |
 | `detection` | interface | Scene/camera change, player detection |
-| `strokes` | experimental (detection only) | `detector.py`: candidate events from wrist peaks (M2.3 I2, provisional states ADR-027), run by the worker after pose (ADR-028); `states.py`: V1 states and reasons in words; `artifact.py`: `strokes.json` 1.x models, reader, invariants, canonical writer (docs/M2_3_EVENTS.md). Classification and phase segmentation: interfaces only |
+| `strokes` | experimental (detection only) | `detector.py`: candidate events from wrist peaks (M2.3 I2, provisional states ADR-027), run by the worker after pose (ADR-028); `states.py`: V1 states and reasons in words; `review.py`: `strokes_review.json`, the user's corrections kept apart from the detector output, and their export as labels (ADR-031); `artifact.py`: `strokes.json` 1.x models, reader, invariants, canonical writer (docs/M2_3_EVENTS.md). Classification and phase segmentation: interfaces only |
 | `racket`, `ball` | interface | Detection/tracking |
 | `comparison` | interface | `CameraView`, compatibility, normalisation |
 | `evaluation` | implemented (offline) | M2.1 dataset formats, annotated intervals and their coverage (`annotated.csv`), label/event matching (M2.1 `compare`), M2.3 association by connected components with miss causes and `strokes_eval.json` 1.0, reports and false-candidate review sheet (docs/M2_3_EVALUATION.md), input visibility report; used by `scripts/eval_strokes.py` only |
@@ -69,7 +69,8 @@
    the analysis; artifacts on disk (`proxy.mp4`, `pose.json`, `overlay.mp4`, `report.json`,
    `timemap.json`, `strokes.json` from the experimental detector, ADR-028). Older analyses
    get strokes from their `pose.json` via `POST /api/analyses/{id}/strokes`
-   (`stroke_detection` job, no new pose estimation).
+   (`stroke_detection` job, no new pose estimation). The user's corrections of the
+   strokes go to `strokes_review.json` through `routers/strokes_review.py` (ADR-031).
    Failures store `error_code`, `error_message`, `error_details`; the API redacts server
    paths from all of them (`tennis_api/redaction.py`, M1.10) and System Status lists the
    latest failures.

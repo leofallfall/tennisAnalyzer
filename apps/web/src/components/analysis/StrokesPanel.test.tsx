@@ -3,6 +3,7 @@ import type {
   AnalysisVideo,
   RegionVisibility,
   RegionVisibilityState,
+  ReviewEntry,
   StrokesView,
 } from '@tpa/contracts'
 import { render, screen, within } from '@testing-library/react'
@@ -143,6 +144,27 @@ const view: StrokesView = {
       reason: 'Busto senza dati utilizzabili: qui i colpi non si possono rilevare',
     },
   ],
+  frame_count: 300,
+  my_strokes: [],
+  reviewed_stretches: [],
+}
+
+const confirmed: ReviewEntry = {
+  id: 'r1',
+  kind: 'stroke',
+  action: 'confirmed',
+  action_label: 'Confermato da te',
+  frame: 30,
+  time_s: 1,
+  stroke_type: 'backhand',
+  stroke_type_label: 'Rovescio',
+  visibility: null,
+  visibility_label: null,
+  reason: null,
+  reason_label: null,
+  note: '',
+  event_id: 'e0001',
+  event_frame: 30,
 }
 
 describe('timelineItems', () => {
@@ -224,6 +246,113 @@ describe('StrokesPanel', () => {
       screen.getByText(/Visibilità delle parti del corpo intorno al colpo/),
     ).toBeInTheDocument()
     expect(screen.getByText('bassa ma usabile')).toBeInTheDocument()
+  })
+
+  it('confirms an event with its type and shows the saved correction', async () => {
+    const after: StrokesView = {
+      ...view,
+      events: view.events.map((e) => (e.id === 'e0001' ? { ...e, review: confirmed } : e)),
+    }
+    const fetchMock = mockFetch({ [URL_]: view, [`${URL_}/review/entries`]: after })
+    render(
+      <StrokesPanel
+        analysis={analysis}
+        av={av(URL_)}
+        frame={0}
+        duration={10}
+        onSeekFrame={() => undefined}
+        onDetected={() => undefined}
+      />,
+    )
+    await screen.findByTestId('strokes-summary')
+    const first = screen.getAllByTestId('review')[0]!
+    await userEvent.click(within(first).getByRole('button', { name: 'Rovescio' }))
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${URL_}/review/entries`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ event_id: 'e0001', kind: 'stroke', stroke_type: 'backhand' }),
+      }),
+    )
+    expect(await screen.findByText('Confermato da te')).toBeInTheDocument()
+    expect(screen.getByTestId('review-summary')).toHaveTextContent('1 confermati')
+    // the detector state stays visible next to the correction
+    const row = screen.getAllByTestId('review')[0]!.closest('li')!
+    expect(within(row).getByText('Colpo segnalato')).toBeInTheDocument()
+  })
+
+  it('deletes with a reason, adds a stroke and marks a reviewed stretch at the video frame', async () => {
+    const fetchMock = mockFetch({
+      [URL_]: view,
+      [`${URL_}/review/entries`]: view,
+      [`${URL_}/review/stretches`]: view,
+    })
+    const { rerender } = render(
+      <StrokesPanel
+        analysis={analysis}
+        av={av(URL_)}
+        frame={45}
+        duration={10}
+        onSeekFrame={() => undefined}
+        onDetected={() => undefined}
+      />,
+    )
+    await screen.findByTestId('strokes-summary')
+    const second = screen.getAllByTestId('review')[1]!
+    await userEvent.click(within(second).getByRole('button', { name: 'Elimina…' }))
+    await userEvent.click(within(second).getByRole('button', { name: 'Doppione' }))
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${URL_}/review/entries`,
+      expect.objectContaining({
+        body: JSON.stringify({ event_id: 'e0002', kind: 'not_stroke', reason: 'duplicate' }),
+      }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Aggiungi colpo qui' }))
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${URL_}/review/entries`,
+      expect.objectContaining({ body: JSON.stringify({ frame: 45, kind: 'stroke' }) }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Inizio tratto rivisto qui' }))
+    rerender(
+      <StrokesPanel
+        analysis={analysis}
+        av={av(URL_)}
+        frame={120}
+        duration={10}
+        onSeekFrame={() => undefined}
+        onDetected={() => undefined}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Fine tratto qui/ }))
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      `${URL_}/review/stretches`,
+      expect.objectContaining({ body: JSON.stringify({ start_frame: 45, end_frame: 120 }) }),
+    )
+  })
+
+  it('hides events deleted by the user unless discarded are shown', () => {
+    const deleted: ReviewEntry = {
+      ...confirmed,
+      kind: 'not_stroke',
+      action: 'deleted',
+      stroke_type: null,
+      stroke_type_label: null,
+      reason: 'duplicate',
+      reason_label: 'Doppione di un altro colpo',
+    }
+    const v: StrokesView = {
+      ...view,
+      events: view.events.map((e) =>
+        e.id === 'e0001'
+          ? { ...e, review: deleted }
+          : e.id === 'e0003'
+            ? { ...e, review: { ...confirmed, frame: 150, time_s: 5 } }
+            : e,
+      ),
+    }
+    // e0001 deleted by the user: hidden; e0003 discarded by the detector but confirmed: shown
+    expect(timelineItems(v, false).map((i) => i.t)).toEqual([3, 5, 6])
+    expect(timelineItems(v, true).map((i) => i.t)).toEqual([1, 3, 5, 6])
   })
 
   it('offers detection on an old analysis without strokes', async () => {

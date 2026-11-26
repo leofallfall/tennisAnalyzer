@@ -101,7 +101,7 @@ them.
 | 2 | Provisional rules for the three states (part of I3), chosen on Development A/B; regression report on Development A/B and Control | every possible stroke gets a state and a reason — **rules implemented, values 0.45 / 0.70 confirmed, Control regression report done once (ADR-027); in review** |
 | 3 | Worker step + API + contracts; `capabilities` strokes = experimental | every analysis produces strokes; older analyses re-processed from `pose.json` — **implemented with step 4 (ADR-028), in review** |
 | 4 | Strokes view on the analysis page: timeline markers, *stroke flagged* / *to check* / *not assessable* (events, and grey stretches labelled as insufficient evidence to detect strokes, never as "no strokes"), reason in words, region visibility shown apart, jump to the stroke | the first usable result — **markers, states, reasons, region visibility per stroke, jump and hidden discarded implemented (ADR-028), in review** |
-| 5 | Review: confirm, delete with reason, move, set type (forehand / backhand / other), add a missed stroke, mark reviewed stretches; corrections stored apart and exportable as labels; case log | results can be corrected and become cases |
+| 5 | Review: confirm, delete with reason, move, set type (forehand / backhand / other), add a missed stroke, mark reviewed stretches; corrections stored apart and exportable as labels; case log | results can be corrected and become cases — **corrections, reviewed stretches, export and timeline zoom implemented (ADR-031), in review; the case log stays outside the app (ADR-025), fed by the notes of the corrections** |
 | 6 | First use on 2–3 new videos, each measured once as it is before any change; one may be the confirmation video | first real measure and first case list |
 
 After first use, only if real cases ask for it: automatic forehand/backhand (M2.4, using the
@@ -114,6 +114,9 @@ labelled and reviewed videos.
 **V1 review 1 (ADR-029, 2026-11-24):** first hand review of the app's strokes (first 161 s of
 img5098_full). Duplicates within 1 s rejected, skeleton-on-something-else and out-of-frame
 peaks discarded and shown as *non valutabile*; before/after on Development A/B in ADR-029.
+**V1 review 2 (ADR-030):** a player at the side edge is out of frame.
+**V1 step 5 (ADR-031):** corrections by hand in the strokes panel, kept in
+`strokes_review.json`, exportable as `labels.csv` / `annotated.csv`.
 
 ### M3 — Session Analysis (was M4; ADR-020)
 The product's entry point: recurring issues of a session for forehand, backhand and both,

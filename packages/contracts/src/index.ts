@@ -285,6 +285,64 @@ export interface StrokeEvent {
   reason_codes: string[]
   /** Four regions, fixed order: torso, left wrist, right wrist, legs. */
   regions: RegionVisibility[]
+  /** The user's correction of this event, if any (V1 step 5, ADR-031). */
+  review?: ReviewEntry | null
+}
+
+export type ReviewStrokeType = 'forehand' | 'backhand' | 'other'
+export type ImpactVisibility = 'full' | 'partial' | 'none'
+export type NotStrokeReason =
+  'duplicate' | 'not_a_stroke' | 'other_person' | 'out_of_frame' | 'other'
+export type ReviewAction = 'confirmed' | 'moved' | 'deleted' | 'added' | 'detached'
+
+/** apps/api/tennis_api/schemas.py ReviewEntryOut (strokes_review.json). The user's frame
+ * is the truth; the detector output is never changed. */
+export interface ReviewEntry {
+  id: string
+  kind: 'stroke' | 'not_stroke'
+  action: ReviewAction
+  action_label: string
+  frame: number
+  time_s: number
+  stroke_type: ReviewStrokeType | null
+  stroke_type_label: string | null
+  visibility: ImpactVisibility | null
+  visibility_label: string | null
+  reason: NotStrokeReason | null
+  reason_label: string | null
+  note: string
+  /** Detector event it was made on; null = a stroke added by the user. */
+  event_id: string | null
+  event_frame: number | null
+}
+
+export interface ReviewedStretch {
+  id: string
+  start_frame: number
+  end_frame: number
+  start_s: number
+  end_s: number
+}
+
+/** ReviewEntryIn: with event_id = confirm / move / delete that event; without = add. */
+export interface ReviewEntryCreate {
+  event_id?: string | null
+  kind?: 'stroke' | 'not_stroke'
+  frame?: number | null
+  stroke_type?: ReviewStrokeType | null
+  visibility?: ImpactVisibility | null
+  reason?: NotStrokeReason | null
+  note?: string
+}
+
+/** ReviewEntryUpdate: replaces the editable fields (the event link never changes). */
+export interface ReviewEntryUpdate {
+  kind: 'stroke' | 'not_stroke'
+  frame: number
+  stroke_type?: ReviewStrokeType | null
+  visibility?: ImpactVisibility | null
+  reason?: NotStrokeReason | null
+  note?: string
 }
 
 /** Insufficient evidence to detect strokes, NOT absence of strokes. */
@@ -310,6 +368,11 @@ export interface StrokesView {
   note: string
   events: StrokeEvent[]
   not_assessable: NotAssessableStretch[]
+  /** Proxy frames in pose.json (valid frames 0 .. n-1). */
+  frame_count: number
+  /** Strokes added by the user, and corrections whose event changed after a new detection. */
+  my_strokes: ReviewEntry[]
+  reviewed_stretches: ReviewedStretch[]
 }
 
 export interface Analysis extends AnalysisStatusInfo {

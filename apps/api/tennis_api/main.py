@@ -12,7 +12,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from tennis_api.config import Settings, get_settings
 from tennis_api.db import Database
 from tennis_api.errors import install_error_handlers
-from tennis_api.routers import ai, analyses, system, videos
+from tennis_api.routers import ai, analyses, strokes_review, system, videos
 from tennis_api.routers.system import API_VERSION
 
 
@@ -48,6 +48,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(system.router)
     app.include_router(videos.router)
     app.include_router(analyses.router)
+    app.include_router(strokes_review.router)
     app.include_router(ai.router)
     return app
 

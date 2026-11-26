@@ -6,6 +6,8 @@ import type {
   AnalysisSummary,
   ApiErrorBody,
   PoseSequence,
+  ReviewEntryCreate,
+  ReviewEntryUpdate,
   SingleStrokeAiRequest,
   StrokesView,
   SystemInfo,
@@ -62,6 +64,23 @@ export const api = {
     request<AnalysisStatusInfo>(`/api/analyses/${id}/start`, { method: 'POST' }),
   getPose: (url: string) => request<PoseSequence>(url),
   getStrokes: (url: string) => request<StrokesView>(url),
+  addReviewEntry: (strokesUrl: string, body: ReviewEntryCreate) =>
+    request<StrokesView>(`${strokesUrl}/review/entries`, json(body)),
+  updateReviewEntry: (strokesUrl: string, id: string, body: ReviewEntryUpdate) =>
+    request<StrokesView>(`${strokesUrl}/review/entries/${id}`, {
+      ...json(body),
+      method: 'PUT',
+    }),
+  deleteReviewEntry: (strokesUrl: string, id: string) =>
+    request<StrokesView>(`${strokesUrl}/review/entries/${id}`, { method: 'DELETE' }),
+  addReviewedStretch: (strokesUrl: string, startFrame: number, endFrame: number) =>
+    request<StrokesView>(
+      `${strokesUrl}/review/stretches`,
+      json({ start_frame: startFrame, end_frame: endFrame }),
+    ),
+  deleteReviewedStretch: (strokesUrl: string, id: string) =>
+    request<StrokesView>(`${strokesUrl}/review/stretches/${id}`, { method: 'DELETE' }),
+  reviewExportUrl: (strokesUrl: string) => `${BASE}${strokesUrl}/review/export`,
   detectStrokes: (id: string) =>
     request<AnalysisStatusInfo>(`/api/analyses/${id}/strokes`, { method: 'POST' }),
   listAiAnalyses: (analysisId: string) => request<AiAnalysis[]>(`/api/analyses/${analysisId}/ai`),

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -301,6 +301,78 @@ class StrokeEventOut(ApiModel):
     regions: list[RegionVisibilityOut] = Field(
         description="Four regions, fixed order: torso, left wrist, right wrist, legs"
     )
+    review: ReviewEntryOut | None = Field(
+        default=None, description="The user's correction of this event, if any (V1 step 5)"
+    )
+
+
+class ReviewEntryOut(ApiModel):
+    """One user correction (strokes_review.json). The user's frame is the truth."""
+
+    id: str
+    kind: str = Field(description="stroke | not_stroke")
+    action: str = Field(description="confirmed | moved | deleted | added | detached")
+    action_label: str
+    frame: int
+    time_s: float = Field(description="Proxy timeline (frame / fps)")
+    stroke_type: str | None = Field(description="forehand | backhand | other | null")
+    stroke_type_label: str | None
+    visibility: str | None = Field(description="Impact as seen by the user: full|partial|none")
+    visibility_label: str | None
+    reason: str | None = Field(description="Why a deleted event is not a stroke")
+    reason_label: str | None
+    note: str
+    event_id: str | None = Field(description="Detector event it was made on (null = added)")
+    event_frame: int | None
+
+
+class ReviewedStretchOut(ApiModel):
+    id: str
+    start_frame: int
+    end_frame: int
+    start_s: float
+    end_s: float
+
+
+class ReviewEntryIn(BaseModel):
+    """Create a correction. With ``event_id`` it applies to that detector event (confirm,
+    move, delete); without it, a stroke the detector missed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: str | None = Field(default=None, max_length=64)
+    kind: Literal["stroke", "not_stroke"] = "stroke"
+    frame: int | None = Field(
+        default=None, ge=0, description="Default: the event's frame; required to add"
+    )
+    stroke_type: Literal["forehand", "backhand", "other"] | None = None
+    visibility: Literal["full", "partial", "none"] | None = None
+    reason: Literal["duplicate", "not_a_stroke", "other_person", "out_of_frame", "other"] | None = (
+        None
+    )
+    note: str = Field(default="", max_length=500)
+
+
+class ReviewEntryUpdate(BaseModel):
+    """Replace the editable fields of a correction (the event link never changes)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["stroke", "not_stroke"]
+    frame: int = Field(ge=0)
+    stroke_type: Literal["forehand", "backhand", "other"] | None = None
+    visibility: Literal["full", "partial", "none"] | None = None
+    reason: Literal["duplicate", "not_a_stroke", "other_person", "out_of_frame", "other"] | None = (
+        None
+    )
+    note: str = Field(default="", max_length=500)
+
+
+class ReviewedStretchIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start_frame: int = Field(ge=0)
+    end_frame: int = Field(ge=0, description="Included; swapped if before start_frame")
 
 
 class NotAssessableOut(ApiModel):
@@ -329,3 +401,10 @@ class StrokesOut(ApiModel):
     note: str
     events: list[StrokeEventOut]
     not_assessable: list[NotAssessableOut]
+    frame_count: int = Field(description="Proxy frames in pose.json (valid frames 0..n-1)")
+    my_strokes: list[ReviewEntryOut] = Field(
+        default_factory=list,
+        description="Corrections not shown on a detector event: strokes added by the user "
+        "and corrections whose event changed after a new detection (detached)",
+    )
+    reviewed_stretches: list[ReviewedStretchOut] = Field(default_factory=list)
